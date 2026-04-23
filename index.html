@@ -1077,9 +1077,9 @@ async function extractScoresFromImage(dataUrl) {
   const base64 = dataUrl.split(',')[1];
   const mediaType = dataUrl.split(';')[0].split(':')[1];
 
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+  const resp = await fetch('https://yellow-flower-ca92.kaheins32.workers.dev/', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': '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', 'anthropic-version': 'anthropic-dangerous-direct-browser-access-2025-01-22' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
