@@ -847,6 +847,16 @@ function toast(msg,type=''){
 }
 
 init();
+
+  <button onclick="resetWPX()">RESET DATA</button>
+
+<script>
+function resetWPX(){
+  localStorage.clear();
+  alert("Reset complete");
+  location.reload();
+}
+</script>
 </script>
 </body>
 </html>
