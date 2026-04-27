@@ -514,7 +514,7 @@ async function processAll(){
     try{
       const result=await extractScoresFromImage(queue[i].dataUrl);
       queue[i].status='done';
-      allResults.push(...result);
+      allResults.push(result);
       matchAndStore(result);saveScores();renderScoreTable();
     }catch(err){queue[i].status='error';toast(`Error: ${err.message}`,'warning');console.error(err);}
     renderQueue();
