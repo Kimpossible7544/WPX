@@ -478,10 +478,62 @@ function backupRoster(){
   URL.revokeObjectURL(url);toast(`Roster saved (${players.length} players)`,'success');
 }
 
-function showBulkModal(){document.getElementById('restoreInput').value=players.join('\n');document.getElementById('restoreModal').classList.add('show');setTimeout(()=>document.getElementById('restoreInput').focus(),100);}
-function closeModal(){document.getElementById('restoreModal').classList.remove('show');}
+function showBulkModal() {
+  const modal = document.getElementById('restoreModal');
+  const input = document.getElementById('restoreInput');
 
-function doRestore(){
+  if (!modal || !input) {
+    alert('Bulk import modal is missing.');
+    return;
+  }
+
+  input.value = players.join('\n');
+  modal.classList.add('show');
+
+  setTimeout(() => input.focus(), 100);
+}
+
+function closeModal() {
+  const modal = document.getElementById('restoreModal');
+  if (modal) modal.classList.remove('show');
+}
+
+async function doRestore() {
+  const input = document.getElementById('restoreInput');
+
+  if (!input) {
+    alert('Roster import box not found.');
+    return;
+  }
+
+  const names = input.value
+    .split(/\r?\n/)
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  if (!names.length) {
+    toast('No names found', 'warning');
+    return;
+  }
+
+  players = [...new Set(names)];
+  players.sort((a, b) => a.localeCompare(b));
+
+  const newScores = {};
+  players.forEach(p => {
+    if (scores[p] !== undefined) newScores[p] = scores[p];
+  });
+  scores = newScores;
+
+  await savePlayers();
+  await saveScores();
+
+  renderPlayerList();
+  renderScoreTable();
+  closeModal();
+
+  toast(`Roster set — ${players.length} players`, 'success');
+}
   const names=document.getElementById('restoreInput').value.split('\n').map(s=>s.trim()).filter(s=>s.length>0);
   if(!names.length){toast('No names found','warning');return;}
   const newScores={};names.forEach(n=>{if(scores[n]!==undefined)newScores[n]=scores[n];});
