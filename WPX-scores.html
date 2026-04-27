@@ -329,7 +329,9 @@ async function init(){
   // Load from cloud with localStorage fallback
   players = await cloudLoad('wpx_players', []);
   scores  = await cloudLoad('wpx_scores',  {});
-  aliases = await cloudLoad('wpx_aliases', {});
+  aliases = await cloudLoad('wpx_aliases', {
+  '乃ㄥAQΜE': 'Blaque'
+});
 
   renderPlayerList(); renderScoreTable(); setupDragDrop();
   const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
