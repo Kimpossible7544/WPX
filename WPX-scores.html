@@ -577,14 +577,40 @@ function similarity(a,b){
   return Math.max(0,Math.round((1-levenshtein(a,b)/Math.max(a.length,b.length))*100));
 }
 
-function findBestMatch(rawName){
-  const norm=normalize(rawName);
-  for(const[alias,rosterName]of Object.entries(aliases)){if(normalize(alias)===norm)return{player:rosterName,score:100,fromAlias:true};}
-  let best=null,bestScore=0;
-  for(const p of players){const s=similarity(norm,normalize(p));if(s>bestScore){bestScore=s;best=p;}}
-  return best&&bestScore>=40?{player:best,score:bestScore,fromAlias:false}:null;
-}
+function findBestMatch(rawName) {
+  const norm = normalize(rawName);
 
+  const blaqueNames = ['乃ㄥAQΜE','乃LαQµε','乃LaOμe','乃LaQμe'];
+
+  for (const name of blaqueNames) {
+    if (normalize(name) === norm) {
+      return { player: 'Blaque', score: 100, fromAlias: true };
+    }
+  }
+
+  for (const [alias, rosterName] of Object.entries(aliases)) {
+    if (normalize(alias) === norm) {
+      return { player: rosterName, score: 100, fromAlias: true };
+    }
+  }
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const p of players) {
+    const s = similarity(norm, normalize(p));
+    if (s > bestScore) {
+      bestScore = s;
+      best = p;
+    }
+  }
+
+  if (best && bestScore >= 40) {
+    return { player: best, score: bestScore, fromAlias: false };
+  }
+
+  return null;
+}
 // ── MATCH & STORE ─────────────────────────────────────────────
 function matchAndStore(results){
   results.forEach(entry=>{
