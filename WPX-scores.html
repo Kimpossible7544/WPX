@@ -876,11 +876,32 @@ function renderScoreTable(){
   document.getElementById('resultsBodyD').innerHTML=html;
 }
 
-function copyToClipboard(){
-  const rows=getSortedRows();
-  if(!rows.length){toast('No data to copy','warning');return;}
-  const text=rows.map(r=>`${r.name}\t${r.score}`).join('\n');
-  navigator.clipboard.writeText(text).then(()=>toast(`Copied ${rows.length} players — paste into Excel!`,'success')).catch(()=>{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast(`Copied ${rows.length} players!`,'success');});
+function copyToClipboard() {
+  if (!players.length) {
+    toast('No roster loaded', 'warning');
+    return;
+  }
+
+  const day = selectedDay || 'Mon';
+  const lines = [];
+
+  Object.entries(scores).forEach(([name, score]) => {
+    if (name.toLowerCase().includes('jackal')) {
+      lines.push(`${name}\t${score}\t${day}`);
+    }
+  });
+
+  players.forEach(p => {
+    if (p.toLowerCase().includes('jackal')) return;
+
+    const score = scores[p] !== undefined ? scores[p] : '';
+    if (score !== '') {
+      lines.push(`${p}\t${score}\t${day}`);
+    }
+  });
+
+  navigator.clipboard.writeText(lines.join('\n'));
+  toast(`Copied scores for ${day}`, 'success');
 }
 
 function exportCSV(){
