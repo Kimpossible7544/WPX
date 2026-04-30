@@ -505,12 +505,17 @@ async function processAll(){
     try{
       const extracted=await extractScoresFromImage(queue[i].dataUrl);
       extracted.forEach(entry=>{
+        const numScore=typeof entry.score==='string'?parseInt(entry.score.replace(/[^0-9]/g,''),10):Number(entry.score);
+        if(isNaN(numScore))return;
         const match=findBestMatch(entry.name);
-        if(match&&match.score>=40){
-          const p=match.player,passed=entry.score>=THRESHOLD;
-          const cur=results[p]?results[p].status:'F';
-          // Only upgrade: F→N or F→Y or N→Y
-          if(cur==='F'||(cur==='N'&&passed))results[p]={status:passed?'Y':'N',score:entry.score};
+        if(match&&match.score>=70){
+          const rosterPlayer=players.find(p=>p.toLowerCase()===match.player.toLowerCase());
+          if(rosterPlayer){
+            const passed=numScore>=THRESHOLD;
+            const cur=results[rosterPlayer]?results[rosterPlayer].status:'F';
+            // Only upgrade: F→N or F→Y or N→Y
+            if(cur==='F'||(cur==='N'&&passed))results[rosterPlayer]={status:passed?'Y':'N',score:numScore};
+          }
         }
       });
       queue[i].status='done';renderResultsTable();
@@ -630,7 +635,7 @@ function renderResultsTable(){
 function copyToClipboard(){
   const sorted=[...players].sort((a,b)=>a.localeCompare(b));
   if(!sorted.length){toast('No data to copy','warning');return;}
-  const text=sorted.map(p=>`${p}\t${results[p]?results[p].status:'F'}`).join('\n');
+  const text=sorted.map(p=>`${p}, ${results[p]?results[p].status:'F'}`).join('\n');
   navigator.clipboard.writeText(text).then(()=>toast(`Copied ${sorted.length} results!`,'success')).catch(()=>{
     const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
     document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
@@ -654,3 +659,4 @@ init();
 </script>
 </body>
 </html>
+
