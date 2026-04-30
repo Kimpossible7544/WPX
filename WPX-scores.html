@@ -346,588 +346,148 @@
 
 <div class="toast-container" id="toastContainer"></div>
 
-<script>
 // ── STATE ─────────────────────────────────────────────────────
 let players = [];
 let scores  = {};
 let aliases = {};
 let selectedDay = localStorage.getItem('wpx_selected_day') || 'Mon';
 let queue=[], flags=[], processing=false;
-const isMobile=()=>window.innerWidth<768;
 
-// ── INIT ──────────────────────────────────────────────────────
-async function init(){
-  // Load from cloud with localStorage fallback
-  players = await cloudLoad('wpx_players', []);
-  scores  = await cloudLoad('wpx_scores',  {});
-  aliases = await cloudLoad('wpx_aliases', {
-    '乃ㄥAQΜE': 'Blaque',
-    '乃LαQµε': 'Blaque',
-    '乃LaOμe': 'Blaque',
-    '乃LaQμe': 'Blaque',
-    'ÍJÁG': 'IJAG',
-    'IJAG': 'IJAG',
-    'ÍJĶĹ': 'IJKL',
-    'IJĶL': 'IJKL',
-    'IJKL': 'IJKL',
-    'Jäckal $ 0 F2P': 'Jackal $ 0 F2P.2',
-    'Jäċkal $ 0 F2P': 'Jackal $ 0 F2P.2'
-  });
-
-  renderPlayerList(); renderScoreTable(); setupDragDrop(); renderDayButtons();
-  const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
-  if(isIOS&&!window.navigator.standalone&&!localStorage.getItem('wpx_install_dismissed'))
-    document.getElementById('installBanner').classList.add('show');
-  const weekLabel=document.getElementById('weekLabel');
-  const weekLabelD=document.getElementById('weekLabelD');
-  if(weekLabel&&weekLabelD){
-    weekLabel.addEventListener('input',e=>weekLabelD.value=e.target.value);
-    weekLabelD.addEventListener('input',e=>weekLabel.value=e.target.value);
-  }
-  document.getElementById('playerInputD').addEventListener('keydown',e=>{if(e.key==='Enter')addPlayerD();});
-}
-document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.activeElement.id==='playerInput')addPlayer();});
-
-function switchTab(name,el){
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
-  document.getElementById('page-'+name).classList.add('active');
-  el.classList.add('active');
+// ── NORMALIZATION ─────────────────────────────────────────────
+function normalize(name){
+  return name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]/g,'');
 }
 
-
-function setSelectedDay(day){
-  selectedDay = day;
-  localStorage.setItem('wpx_selected_day', day);
-  renderDayButtons();
-  toast(`Import day set to ${day}`, 'success');
-}
-
-function renderDayButtons(){
-  document.querySelectorAll('.day-btn').forEach(btn=>btn.classList.toggle('active', btn.dataset.day===selectedDay));
-  document.querySelectorAll('.selected-day-label').forEach(el=>el.textContent=selectedDay);
-}
-
-// ── PLAYERS ───────────────────────────────────────────────────
-function addPlayer(){const inp=document.getElementById('playerInput');doAddPlayer(inp.value.trim());inp.value='';inp.focus();}
-function addPlayerD(){const inp=document.getElementById('playerInputD');doAddPlayer(inp.value.trim());inp.value='';inp.focus();}
-
-function doAddPlayer(name){
-  if(!name)return;
-  if(players.map(p=>p.toLowerCase()).includes(name.toLowerCase())){toast('Player already on roster','warning');return;}
-  players.push(name);players.sort((a,b)=>a.localeCompare(b));
-  savePlayers();renderPlayerList();renderScoreTable();
-  toast(`${name} added to roster`);
-}
-
-function removePlayer(name){
-  if(!confirm(`Remove ${name} from roster?`))return;
-  players=players.filter(p=>p!==name);delete scores[name];
-  savePlayers();saveScores();renderPlayerList();renderScoreTable();
-  toast(`${name} removed`);
-}
-
-function startRename(name){renderPlayerList(name);}
-
-function commitRename(oldName){
-  const inp=document.getElementById('rename-'+oldName.replace(/\s/g,'_'));
-  if(!inp)return;
-  const newName=inp.value.trim();
-  if(!newName||newName===oldName){renderPlayerList();return;}
-  if(players.map(p=>p.toLowerCase()).includes(newName.toLowerCase())&&newName.toLowerCase()!==oldName.toLowerCase()){toast('That name already exists','warning');return;}
-  const idx=players.indexOf(oldName);if(idx>=0)players[idx]=newName;
-  if(scores[oldName]!==undefined){scores[newName]=scores[oldName];delete scores[oldName];}
-  players.sort((a,b)=>a.localeCompare(b));
-  savePlayers();saveScores();renderPlayerList();renderScoreTable();
-  toast(`Renamed to ${newName}`);
-}
-
-function renderPlayerList(editingName=null){
-  const count=players.length;
-  const countHtml=count?`<span style="color:var(--dim)">${count} player${count!==1?'s':''} · auto-saved</span>`:'<span style="color:var(--dim)">No players yet</span>';
-  document.getElementById('rosterCount').innerHTML=countHtml;
-  if(document.getElementById('rosterCountD'))document.getElementById('rosterCountD').innerHTML=countHtml;
-  const html=players.length?players.map(p=>{
-    const safeId='rename-'+p.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
-    if(p===editingName)return`<div class="player-chip"><input class="chip-edit-input" id="${safeId}" value="${p.replace(/"/g,'&quot;')}" onblur="commitRename('${p.replace(/'/g,"\\'")}') " onkeydown="if(event.key==='Enter')commitRename('${p.replace(/'/g,"\\'")}');if(event.key==='Escape')renderPlayerList();" autofocus/><div class="chip-actions"><button class="chip-btn" onclick="commitRename('${p.replace(/'/g,"\\'")}')">✓</button></div></div>`;
-    return`<div class="player-chip"><span class="chip-name">${p}</span><div class="chip-actions"><button class="chip-btn" onclick="startRename('${p.replace(/'/g,"\\'")}')">✎</button><button class="chip-btn del" onclick="removePlayer('${p.replace(/'/g,"\\'")}')">×</button></div></div>`;
-  }).join(''):'<div style="color:var(--dim);font-family:var(--mono);font-size:0.72rem;padding:8px 0;">No players yet — add them above</div>';
-  document.getElementById('playerList').innerHTML=html;
-  document.getElementById('playerListD').innerHTML=html;
-  if(editingName){const inp=document.getElementById('rename-'+editingName.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,''));if(inp){inp.focus();inp.select();}}
-}
-
-// ── CLOUDFLARE SYNC ───────────────────────────────────────────
-const WORKER_URL = 'https://yellow-flower-ca92.kaheins32.workers.dev';
-const WPX_SECRET = 'Abigail2011!';
-
-async function cloudSave(key, value) {
-  try {
-    await fetch(`${WORKER_URL}?key=${key}`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-WPX-Secret': WPX_SECRET},
-      body: JSON.stringify({value})
-    });
-  } catch(e) {
-    console.warn('Cloud save failed, using localStorage', e);
-    localStorage.setItem(key, JSON.stringify(value));
-  }
-}
-
-async function cloudLoad(key, fallback) {
-  try {
-    const resp = await fetch(`${WORKER_URL}?key=${key}`, {
-      headers: {'X-WPX-Secret': WPX_SECRET}
-    });
-    const data = await resp.json();
-    if (data.value !== null && data.value !== undefined) return JSON.parse(data.value);
-  } catch(e) {
-    console.warn('Cloud load failed, using localStorage', e);
-  }
-  const local = localStorage.getItem(key);
-  return local ? JSON.parse(local) : fallback;
-}
-
-async function savePlayers() {
-  localStorage.setItem('wpx_players', JSON.stringify(players));
-  await cloudSave('wpx_players', players);
-}
-async function saveScores() {
-  localStorage.setItem('wpx_scores', JSON.stringify(scores));
-  await cloudSave('wpx_scores', scores);
-}
-async function saveAliases() {
-  localStorage.setItem('wpx_aliases', JSON.stringify(aliases));
-  await cloudSave('wpx_aliases', aliases);
-}
-
-function backupRoster(){
-  if(!players.length){toast('No players to back up','warning');return;}
-  const blob=new Blob([players.join('\n')],{type:'text/plain'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download='wpx-roster.txt';a.click();
-  URL.revokeObjectURL(url);toast(`Roster saved (${players.length} players)`,'success');
-}
-
-function showBulkModal(){
-  const modal=document.getElementById('restoreModal');
-  const input=document.getElementById('restoreInput');
-  if(!modal||!input){alert('Bulk import modal is missing.');return;}
-  input.value=players.join('\n');
-  modal.classList.add('show');
-  setTimeout(()=>input.focus(),100);
-}
-
-function closeModal(){
-  const modal=document.getElementById('restoreModal');
-  if(modal)modal.classList.remove('show');
-}
-
-async function doRestore(){
-  const input=document.getElementById('restoreInput');
-  if(!input){alert('Roster import box not found.');return;}
-  const names=input.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-  if(!names.length){toast('No names found','warning');return;}
-  players=[...new Set(names)];
-  players.sort((a,b)=>a.localeCompare(b));
-  const newScores={};
-  players.forEach(p=>{if(scores[p]!==undefined)newScores[p]=scores[p];});
-  scores=newScores;
-  await savePlayers();
-  await saveScores();
-  renderPlayerList();
-  renderScoreTable();
-  closeModal();
-  toast(`Roster set — ${players.length} players`,'success');
-}
-
-function dismissInstall(){document.getElementById('installBanner').classList.remove('show');localStorage.setItem('wpx_install_dismissed','1');}
-
-// ── FILE QUEUE ────────────────────────────────────────────────
-function handleFiles(e){addToQueue(Array.from(e.target.files));e.target.value='';if(isMobile())switchTab('upload',document.querySelectorAll('.nav-tab')[1]);}
-
-function addToQueue(files){
-  files.forEach(file=>{const r=new FileReader();r.onload=ev=>{queue.push({file,dataUrl:ev.target.result,status:'pending'});renderQueue();};r.readAsDataURL(file);});
-}
-
-function removeFromQueue(idx){queue.splice(idx,1);renderQueue();}
-
-function renderQueue(){
-  const show=queue.length>0;
-  document.getElementById('queueSection').style.display=show?'block':'none';
-  document.getElementById('queueCount').textContent=queue.length;
-  document.getElementById('queueGrid').innerHTML=queueHTML(queue,'removeFromQueue');
-  document.getElementById('queueSectionD').style.display=show?'block':'none';
-  document.getElementById('queueCountD').textContent=queue.length;
-  document.getElementById('queueGridD').innerHTML=queueHTML(queue,'removeFromQueue');
-  const done=queue.filter(q=>q.status==='done'||q.status==='error').length;
-  const pct=queue.length?(done/queue.length*100):0;
-  ['progressFill','progressFillD'].forEach(id=>document.getElementById(id).style.width=pct+'%');
-  ['progressLabel','progressLabelD'].forEach(id=>document.getElementById(id).textContent=`${done} / ${queue.length}`);
-}
-
-function queueHTML(q,removeFn){
-  return q.map((item,i)=>`<div class="queue-item"><img src="${item.dataUrl}" alt="screenshot"/>${item.status==='pending'?`<button class="q-remove" onclick="${removeFn}(${i})">×</button>`:''}<div class="q-status ${item.status}">${item.status.toUpperCase()}</div></div>`).join('');
-}
-
-function setupDragDrop(){
-  ['uploadZone','uploadZoneD'].forEach(id=>{
-    const el=document.getElementById(id);if(!el)return;
-    el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('dragover');});
-    el.addEventListener('dragleave',()=>el.classList.remove('dragover'));
-    el.addEventListener('drop',e=>{e.preventDefault();el.classList.remove('dragover');addToQueue(Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith('image/')));});
-  });
-}
-
-// ── PROCESS ───────────────────────────────────────────────────
-async function processAll(){
-  if(!queue.length){toast('No screenshots in queue','warning');return;}
-  if(!players.length){toast('Add players to roster first','warning');return;}
-  if(processing)return;
-  processing=true;
-  document.getElementById('headerStatus').textContent='PROCESSING...';
-  toast(`Processing ${queue.filter(q=>q.status==='pending').length} screenshot(s)...`);
-  
-  // Collect all results from all screenshots first
-  const allResults=[];
-  for(let i=0;i<queue.length;i++){
-    if(queue[i].status!=='pending')continue;
-    queue[i].status='processing';renderQueue();
-    try{
-      const result=await extractScoresFromImage(queue[i].dataUrl);
-      queue[i].status='done';
-      allResults.push(...result);
-      matchAndStore(result);saveScores();renderScoreTable();
-    }catch(err){queue[i].status='error';toast(`Error: ${err.message}`,'warning');console.error(err);}
-    renderQueue();
-  }
-  
-  // Only check for missing players AFTER all screenshots processed
-  checkMissingPlayers(allResults);
-  renderFlags();
-  
-  processing=false;
-  document.getElementById('headerStatus').textContent='AI ONLINE';
-  const wl=selectedDay;
-  document.getElementById('weekDisplay').textContent=wl;
-  document.getElementById('weekDisplayD').textContent=wl;
-  if(isMobile())setTimeout(()=>switchTab('scores',document.querySelectorAll('.nav-tab')[2]),400);
-  toast('All screenshots processed!','success');
-}
-
-async function extractScoresFromImage(dataUrl){
-  const base64=dataUrl.split(',')[1];
-  const mediaType=dataUrl.split(';')[0].split(':')[1];
-  const resp=await fetch(`${WORKER_URL}?action=ai`,{
-    method:'POST',
-    headers:{'Content-Type':'application/json','X-WPX-Secret':WPX_SECRET},
-    body:JSON.stringify({
-      model:'claude-sonnet-4-6',max_tokens:1000,
-      messages:[{role:'user',content:[
-        {type:'image',source:{type:'base64',media_type:mediaType,data:base64}},
-        {type:'text',text:'This is a screenshot from a zombie game scoreboard. Extract ALL visible player names and their scores, including players with 0 points.\n\nReturn ONLY a JSON array, no markdown, no explanation:\n[{"name":"PlayerName","score":12345},...]\n\nRules:\n- Include EVERY player visible, even if their score is 0\n- Score = total points as a single number (use 0 if score shows 0)\n- Use exact player name as shown including special characters\n- Do NOT omit any players'}
-      ]}]
-    })
-  });
-  if(!resp.ok){const err=await resp.json().catch(()=>({}));throw new Error(`API error ${resp.status}: ${err?.error?.message||resp.statusText}`);}
-  const data=await resp.json();
-  const text=data.content.map(c=>c.text||'').join('');
-  return JSON.parse(text.replace(/```json|```/g,'').trim());
-}
-
-// ── UNICODE / LEET MAP ────────────────────────────────────────
-const UNICODE_MAP={'0':'o','1':'i','3':'e','4':'a','5':'s','6':'g','7':'t','8':'b','9':'g','@':'a','$':'s','!':'i','ａ':'a','ｂ':'b','ｃ':'c','ｄ':'d','ｅ':'e','ｆ':'f','ｇ':'g','ｈ':'h','ｉ':'i','ｊ':'j','ｋ':'k','ｌ':'l','ｍ':'m','ｎ':'n','ｏ':'o','ｐ':'p','ｑ':'q','ｒ':'r','ｓ':'s','ｔ':'t','ｕ':'u','ｖ':'v','ｗ':'w','ｘ':'x','ｙ':'y','ｚ':'z','Ａ':'a','Ｂ':'b','Ｃ':'c','Ｄ':'d','Ｅ':'e','Ｆ':'f','Ｇ':'g','Ｈ':'h','Ｉ':'i','Ｊ':'j','Ｋ':'k','Ｌ':'l','Ｍ':'m','Ｎ':'n','Ｏ':'o','Ｐ':'p','Ｑ':'q','Ｒ':'r','Ｓ':'s','Ｔ':'t','Ｕ':'u','Ｖ':'v','Ｗ':'w','Ｘ':'x','Ｙ':'y','Ｚ':'z','α':'a','β':'b','γ':'g','δ':'d','ε':'e','η':'n','θ':'o','ι':'i','κ':'k','λ':'l','μ':'m','ν':'v','ο':'o','π':'p','ρ':'r','σ':'s','τ':'t','υ':'u','φ':'f','χ':'x','ω':'w','Α':'a','Β':'b','Γ':'g','Δ':'d','Ε':'e','Η':'n','Θ':'o','Ι':'i','Κ':'k','Λ':'l','Μ':'m','Ν':'n','Ο':'o','Π':'p','Ρ':'r','Σ':'s','Τ':'t','Υ':'u','Φ':'f','Χ':'x','Ω':'w','а':'a','е':'e','о':'o','р':'r','с':'s','х':'x','у':'y','к':'k','А':'a','Е':'e','О':'o','Р':'r','С':'s','Х':'x','У':'y','К':'k','В':'b','М':'m','Т':'t','Н':'n','И':'i','ㄥ':'l','乃':'b','卄':'h','ㄖ':'r','á':'a','à':'a','â':'a','ä':'a','ã':'a','å':'a','é':'e','è':'e','ê':'e','ë':'e','í':'i','ì':'i','î':'i','ï':'i','ó':'o','ò':'o','ô':'o','ö':'o','õ':'o','ú':'u','ù':'u','û':'u','ü':'u','ý':'y','ÿ':'y','ñ':'n','ç':'c','Á':'a','À':'a','Â':'a','Ä':'a','Ã':'a','Å':'a','É':'e','È':'e','Ê':'e','Ë':'e','Í':'i','Ì':'i','Î':'i','Ï':'i','Ó':'o','Ò':'o','Ô':'o','Ö':'o','Õ':'o','Ú':'u','Ù':'u','Û':'u','Ü':'u','Ñ':'n','Ç':'c','Ķ':'k','ķ':'k','Ĺ':'l','ĺ':'l','Ł':'l','ł':'l','ċ':'c','Ċ':'c','Ø':'o','ø':'o','Ū':'u','ū':'u','µ':'m'};
-
-function transliterate(str){let out='';for(const ch of str)out+=UNICODE_MAP[ch]!==undefined?UNICODE_MAP[ch]:ch;return out;}
-function normalize(name){return transliterate(name).toLowerCase().replace(/[^a-z0-9]/g,'');}
-
-function levenshtein(a,b){
-  const m=a.length,n=b.length;
-  const dp=Array.from({length:m+1},(_,i)=>Array.from({length:n+1},(_,j)=>j===0?i:0));
-  for(let j=1;j<=n;j++)dp[0][j]=j;
-  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
-  return dp[m][n];
-}
-
-function similarity(a,b){
-  if(!a||!b)return 0;if(a===b)return 100;
-  if(a.includes(b)||b.includes(a))return 85;
-  return Math.max(0,Math.round((1-levenshtein(a,b)/Math.max(a.length,b.length))*100));
-}
-
+// ── MATCHING ──────────────────────────────────────────────────
 function findBestMatch(rawName){
-  const norm=normalize(rawName);
+  const normRaw = normalize(rawName);
 
-  const hardMatches=[
-    {names:['乃ㄥAQΜE','乃LαQµε','乃LaOμe','乃LaQμe'],player:'Blaque'},
-    {names:['ÍJÁG','IJAG'],player:'IJAG'},
-    {names:['ÍJĶĹ','IJĶL','IJKL'],player:'IJKL'},
-    {names:['Jäckal $ 0 F2P','Jäċkal $ 0 F2P'],player:'Jackal $ 0 F2P.2'}
-  ];
+  // 🚫 HARD BLOCKS
+  const blocked = ['blaque','乃ㄥaqμe'];
+  if (blocked.some(b => normRaw.includes(normalize(b)))) return null;
 
-  for(const group of hardMatches){
-    if(group.names.some(name=>normalize(name)===norm)){
-      return{player:group.player,score:100,fromAlias:true};
+  if (normRaw.includes(normalize('a사시미스시'))) return null;
+
+  // Alias check (safe ones only)
+  for(const [alias, rosterName] of Object.entries(aliases)){
+    if(normalize(alias) === normRaw){
+      return {player: rosterName, score:100, fromAlias:true};
     }
   }
 
-  for(const[alias,rosterName]of Object.entries(aliases)){
-    if(normalize(alias)===norm)return{player:rosterName,score:100,fromAlias:true};
+  // Fuzzy match
+  let best=null, bestScore=0;
+  for(const p of players){
+    const s = similarity(normRaw, normalize(p));
+    if(s > bestScore){
+      bestScore = s;
+      best = p;
+    }
   }
 
-  let best=null,bestScore=0;
-  for(const p of players){
-    const s=similarity(norm,normalize(p));
-    if(s>bestScore){bestScore=s;best=p;}
-  }
-  return best&&bestScore>=40?{player:best,score:bestScore,fromAlias:false}:null;
+  return best && bestScore >= 55
+    ? {player:best, score:bestScore, fromAlias:false}
+    : null;
 }
 
 // ── MATCH & STORE ─────────────────────────────────────────────
 function matchAndStore(results){
   results.forEach(entry=>{
-    const match=findBestMatch(entry.name);
-    if(match&&match.score>=70){
-      // Good match — store directly
-      if(scores[match.player]!==undefined&&scores[match.player]!==null){
-        // First slot taken — try (2)
-        const altKey=players.includes(match.player+'.2')?match.player+'.2':match.player+' (2)';
-        if(scores[altKey]!==undefined&&scores[altKey]!==null){
-          // Both slots taken — flag as true duplicate
-          if(!flags.find(f=>f.type==='duplicate'&&f.player===match.player)){
-            flags.push({type:'duplicate',player:match.player,existingScore:scores[match.player],newScore:entry.score,rawName:entry.name});
-            toast(`⚠ Duplicate: ${match.player}`,'warning');updateFlagBadge();
-          }
-        }else{
-          // Store in (2) slot automatically — no flag needed
-          scores[altKey]=entry.score;
-          toast(`✓ ${altKey}: ${entry.score.toLocaleString()} pts`,'success');
-        }
-      }else{
-        scores[match.player]=entry.score;
-        toast(`✓ ${match.player}: ${entry.score.toLocaleString()} pts`,'success');
-      }
-    }else if(match&&match.score>=20){
-      // Low confidence — flag for confirmation with dropdown
-      if(!flags.find(f=>f.rawName===entry.name)){
-        flags.push({type:'fuzzy',rawName:entry.name,score:entry.score,suggestedPlayer:match.player,matchScore:match.score,confident:match.score>=70});
-        updateFlagBadge();
-      }
-    }else{
-      // No match at all — flag as unknown with dropdown
-      if(!flags.find(f=>f.rawName===entry.name)){
-        flags.push({type:'unknown',rawName:entry.name,score:entry.score});
-        updateFlagBadge();
-      }
-    }
-  });
-  // Missing players checked after ALL screenshots done in processAll
-}
+    const match = findBestMatch(entry.name);
 
-function checkMissingPlayers(results){
-  // Only flag players who genuinely have no score recorded after all screenshots
-  players.forEach(p=>{
-    const hasScore = scores[p]!==undefined && scores[p]!==null;
-    const hasAltScore = scores[p+' (2)']!==undefined && scores[p+' (2)']!==null;
-    if(!hasScore && !hasAltScore){
-      if(!flags.find(f=>f.type==='missing'&&f.player===p)){
-        flags.push({type:'missing',player:p});
-        updateFlagBadge();
+    if(match && match.score >= 70){
+
+      // ✅ ONLY ONE SCORE PER PLAYER
+      if(scores[match.player] !== undefined && scores[match.player] !== null){
+        return; // ignore duplicates completely
+      }
+
+      scores[match.player] = entry.score;
+      toast(`✓ ${match.player}: ${entry.score.toLocaleString()} pts`,'success');
+
+    } else if(match && match.score >= 20){
+
+      if(!flags.find(f=>f.rawName===entry.name)){
+        flags.push({
+          type:'fuzzy',
+          rawName:entry.name,
+          score:entry.score,
+          suggestedPlayer:match.player,
+          matchScore:match.score,
+          confident:match.score>=70
+        });
+      }
+
+    } else {
+
+      if(!flags.find(f=>f.rawName===entry.name)){
+        flags.push({
+          type:'unknown',
+          rawName:entry.name,
+          score:entry.score
+        });
       }
     }
   });
 }
 
-// ── FLAGS ─────────────────────────────────────────────────────
-function updateFlagBadge(){const b=document.getElementById('flagBadge');if(flags.length>0){b.textContent=flags.length;b.classList.add('show');}else{b.classList.remove('show');}}
-
+// ── FLAGS RENDER ──────────────────────────────────────────────
 function renderFlags(){
-  updateFlagBadge();
   const dupes=flags.filter(f=>f.type==='duplicate');
   const fuzz=flags.filter(f=>f.type==='fuzzy');
   const unk=flags.filter(f=>f.type==='unknown');
   const miss=flags.filter(f=>f.type==='missing');
+
   let html='';
-  if(!flags.length)html='<div class="empty-state">NO FLAGS — ALL CLEAR</div>';
-  else{
-    if(dupes.length)html+=`<div class="flag-group-label">⚠ DUPLICATE SCORES (${dupes.length})</div>`+dupes.map(f=>flagHTML(f,flags.indexOf(f))).join('');
-    if(fuzz.length) html+=`<div class="flag-group-label">~ POSSIBLE MATCHES — CONFIRM OR REASSIGN (${fuzz.length})</div>`+fuzz.map(f=>flagHTML(f,flags.indexOf(f))).join('');
-    if(unk.length)  html+=`<div class="flag-group-label">? UNKNOWN NAMES — SELECT PLAYER (${unk.length})</div>`+unk.map(f=>flagHTML(f,flags.indexOf(f))).join('');
-    if(miss.length) html+=`<div class="flag-group-label">○ NOT IN SCREENSHOTS (${miss.length})</div>`+miss.map(f=>flagHTML(f,flags.indexOf(f))).join('');
+
+  if(!flags.length){
+    html='<div class="empty-state">NO FLAGS — ALL CLEAR</div>';
+  } else {
+
+    // 🚨 UNKNOWN FIRST
+    if(unk.length)
+      html+=`<div class="flag-group-label">🚨 NOT MATCHED — REVIEW FIRST (${unk.length})</div>`+
+        unk.map(f=>flagHTML(f,flags.indexOf(f))).join('');
+
+    if(fuzz.length)
+      html+=`<div class="flag-group-label">~ POSSIBLE MATCHES (${fuzz.length})</div>`+
+        fuzz.map(f=>flagHTML(f,flags.indexOf(f))).join('');
+
+    if(dupes.length)
+      html+=`<div class="flag-group-label">⚠ DUPLICATES (${dupes.length})</div>`+
+        dupes.map(f=>flagHTML(f,flags.indexOf(f))).join('');
+
+    if(miss.length)
+      html+=`<div class="flag-group-label">○ NOT IN SCREENSHOTS (${miss.length})</div>`+
+        miss.map(f=>flagHTML(f,flags.indexOf(f))).join('');
   }
+
   document.getElementById('flagsList-mobile').innerHTML=html;
-  const ds=document.getElementById('flagsSectionD');
-  if(flags.length){ds.style.display='block';document.getElementById('flagsListD').innerHTML=html;}else{ds.style.display='none';}
+  document.getElementById('flagsListD').innerHTML=html;
 }
 
-function flagHTML(f,i){
-  // Build dropdown with best match pre-selected
-  const playerOptions=`<option value="">-- Select player --</option>`+players.map(p=>`<option value="${p}" ${(f.suggestedPlayer===p)?'selected':''}>${p}</option>`).join('');
-
-  if(f.type==='duplicate')return`<div class="flag-item">
-    <div class="flag-name">⚠ DUPLICATE — ${f.player}</div>
-    <div class="flag-meta">Screenshot name: <span style="color:var(--text)">${f.rawName||f.player}</span></div>
-    <div class="flag-score">Existing: <strong style="color:var(--gore)">${f.existingScore.toLocaleString()}</strong> &nbsp;|&nbsp; New: <strong style="color:#2ecc71">${f.newScore.toLocaleString()}</strong></div>
-    <div class="flag-actions">
-      <button class="btn-flag accept" onclick="resolveDuplicate(${i},'existing')">KEEP ${f.existingScore.toLocaleString()}</button>
-      <button class="btn-flag accept" style="border-color:#2ecc71;color:#2ecc71;" onclick="resolveDuplicate(${i},'new')">USE ${f.newScore.toLocaleString()}</button>
-      <button class="btn-flag reject" onclick="rejectFlag(${i})">✗ SKIP</button>
-    </div>
-  </div>`;
-
-  if(f.type==='fuzzy')return`<div class="flag-item">
-    <div class="flag-name">~ "${f.rawName}"</div>
-    <div class="flag-meta">Best guess: <strong style="color:${f.confident?'#27ae60':'#f39c12'}">${f.suggestedPlayer}</strong> &nbsp;<span style="color:var(--dim)">(${f.matchScore}% match)</span></div>
-    <div class="flag-score">${f.score.toLocaleString()} pts</div>
-    <div class="flag-meta" style="margin-top:6px;">Confirm match or select a different player:</div>
-    <select class="flag-select" id="flagSelect-${i}">${playerOptions}</select>
-    <div class="flag-actions">
-      <button class="btn-flag accept" onclick="acceptFlag(${i},true,this)">✓ ASSIGN &amp; REMEMBER</button>
-      <button class="btn-flag accept" style="border-color:#888;color:#888;" onclick="acceptFlag(${i},false,this)">✓ ONCE ONLY</button>
-      <button class="btn-flag reject" onclick="rejectFlag(${i})">✗ SKIP</button>
-    </div>
-  </div>`;
-
-  if(f.type==='unknown')return`<div class="flag-item">
-    <div class="flag-name">? UNKNOWN — "${f.rawName}"</div>
-    <div class="flag-score">${f.score.toLocaleString()} pts</div>
-    <div class="flag-meta">Not found on roster. Select who this is:</div>
-    <select class="flag-select" id="flagSelect-${i}">${playerOptions}</select>
-    <div class="flag-actions">
-      <button class="btn-flag accept" onclick="acceptFlag(${i},true,this)">✓ ASSIGN &amp; REMEMBER</button>
-      <button class="btn-flag accept" style="border-color:#888;color:#888;" onclick="acceptFlag(${i},false,this)">✓ ONCE ONLY</button>
-      <button class="btn-flag reject" onclick="rejectFlag(${i})">✗ SKIP</button>
-    </div>
-  </div>`;
-
-  if(f.type==='missing')return`<div class="flag-item">
-    <div class="flag-name" style="color:var(--dim)">○ NOT IN SCREENSHOTS — ${f.player}</div>
-    <div class="flag-meta">This player was not found in any uploaded screenshot.</div>
-    <div class="flag-actions" style="margin-top:8px;">
-      <button class="btn-flag reject" onclick="rejectFlag(${i})">✓ ACKNOWLEDGED</button>
-    </div>
-  </div>`;
-  return'';
+// ── SIMILARITY ────────────────────────────────────────────────
+function levenshtein(a,b){
+  const m=a.length,n=b.length;
+  const dp=Array.from({length:m+1},(_,i)=>Array.from({length:n+1},(_,j)=>j===0?i:0));
+  for(let j=1;j<=n;j++)dp[0][j]=j;
+  for(let i=1;i<=m;i++)
+    for(let j=1;j<=n;j++)
+      dp[i][j]=a[i-1]===b[j-1]
+        ? dp[i-1][j-1]
+        : 1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[m][n];
 }
 
-function resolveDuplicate(i,which){
-  const f=flags[i];scores[f.player]=which==='new'?f.newScore:f.existingScore;
-  flags.splice(i,1);saveScores();renderScoreTable();renderFlags();
-  toast(`${f.player} → ${scores[f.player].toLocaleString()} pts`,'success');
+function similarity(a,b){
+  if(!a||!b)return 0;
+  if(a===b)return 100;
+  return Math.round((1 - levenshtein(a,b)/Math.max(a.length,b.length))*100);
 }
 
-function acceptFlag(i, remember, btn) {
-  let sel = null;
-
-  // There are mobile and desktop flag lists rendered at the same time.
-  // This finds the dropdown beside the button you actually clicked.
-  if (btn) {
-    const flagItem = btn.closest('.flag-item');
-    if (flagItem) sel = flagItem.querySelector('.flag-select');
-  }
-
-  // Fallback for older buttons
-  if (!sel) sel = document.getElementById(`flagSelect-${i}`);
-
-  if (!sel || !sel.value) {
-    toast('Select a player to match', 'warning');
-    return;
-  }
-
-  const f = flags[i];
-  const rosterName = sel.value;
-
-  if (remember && f.rawName) {
-    aliases[f.rawName] = rosterName;
-    saveAliases();
-    toast(`Alias saved: "${f.rawName}" → ${rosterName}`, 'success');
-  }
-
-  if (scores[rosterName] !== undefined && scores[rosterName] !== null) {
-    flags.splice(i, 1);
-    flags.push({
-      type: 'duplicate',
-      player: rosterName,
-      existingScore: scores[rosterName],
-      newScore: f.score,
-      rawName: f.rawName
-    });
-    renderFlags();
-    return;
-  }
-
-  scores[rosterName] = f.score;
-  flags.splice(i, 1);
-  saveScores();
-  renderScoreTable();
-  renderFlags();
-  toast(`${rosterName}: ${f.score.toLocaleString()} pts`, 'success');
-}
-
-function rejectFlag(i){flags.splice(i,1);renderFlags();toast('Entry skipped');}
-
-// ── SCORE TABLE & EXPORT ──────────────────────────────────────
-function getSortedRows(){return[...players].sort((a,b)=>a.localeCompare(b)).map(p=>({name:p,score:scores[p]!==undefined&&scores[p]!==null?scores[p]:''}));}
-
-function renderScoreTable(){
-  const sorted=[...players].sort((a,b)=>a.localeCompare(b));
-  const html=!players.length?'<tr><td colspan="4"><div class="empty-state">ADD PLAYERS TO ROSTER TO BEGIN</div></td></tr>':sorted.map((p,i)=>{const score=scores[p];const has=score!==undefined&&score!==null;return`<tr><td style="color:var(--dim)">${String(i+1).padStart(2,'0')}</td><td>${p}</td><td class="${has?'score-cell':'score-empty'}">${has?score.toLocaleString():'—'}</td><td><span class="flag-badge ${has?'ok':''}">${has?'RECORDED':'PENDING'}</span></td></tr>`;}).join('');
-  document.getElementById('resultsBody').innerHTML=html;
-  document.getElementById('resultsBodyD').innerHTML=html;
-}
-
-function copyToClipboard() {
-  if (!players.length) {
-    toast('No roster loaded', 'warning');
-    return;
-  }
-
-  const day = selectedDay || 'Mon';
-  const lines = [];
-
-  Object.entries(scores).forEach(([name, score]) => {
-    if (name.toLowerCase().includes('jackal')) {
-      lines.push(`${name}\t${score}\t${day}`);
-    }
-  });
-
-  players.forEach(p => {
-    if (p.toLowerCase().includes('jackal')) return;
-
-    const score = scores[p] !== undefined ? scores[p] : '';
-    if (score !== '') {
-      lines.push(`${p}\t${score}\t${day}`);
-    }
-  });
-
-  navigator.clipboard.writeText(lines.join('\n'));
-  toast(`Copied scores for ${day}`, 'success');
-}
-
-function exportCSV(){
-  const week=selectedDay||'export';
-  const rows=getSortedRows();
-  const csv=['Player,Score',...rows.map(r=>`"${r.name}",${r.score}`)].join('\n');
-  const blob=new Blob([csv],{type:'text/csv'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=`wpx-scores-${week.replace(/\s+/g,'-')}.csv`;a.click();
-  URL.revokeObjectURL(url);toast('CSV exported!','success');
-}
-
-function resetScores(){
-  if(!confirm('Clear all scores? Roster stays.'))return;
-  scores={};flags=[];queue=[];saveScores();renderScoreTable();renderFlags();renderQueue();
-  document.getElementById('weekDisplay').textContent='';document.getElementById('weekDisplayD').textContent='';
-  toast('Scores cleared','success');
-}
-
-function toast(msg,type=''){
-  const el=document.createElement('div');el.className=`toast ${type}`;el.textContent=msg;
-  document.getElementById('toastContainer').appendChild(el);
-  setTimeout(()=>{el.style.opacity='0';el.style.transition='opacity 0.3s';setTimeout(()=>el.remove(),300);},3000);
-}
-
-init();
 </script>
 </body>
 </html>
