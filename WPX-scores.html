@@ -835,7 +835,7 @@ function flagHTML(f, idx) {
     html += `<div class="flag-meta">Not matched to any roster player</div>`;
     html += `<div class="flag-actions"><select class="flag-select" id="flag-assign-${idx}"><option value="">— Assign to player —</option>`;
     players.forEach(p => { html += `<option value="${p.replace(/"/g, '&quot;')}">${p}</option>`; });
-    html += `</select><button class="btn-flag accept" onclick="assignFlag(${idx})">✓ ASSIGN</button>`;
+    html += `</select><button class="btn-flag accept" onclick="assignFlag(${idx}, this)">✓ ASSIGN</button>`;
     html += `<button class="btn-flag reject" onclick="rejectFlag(${idx})">× DISMISS</button></div>`;
   } else if(f.type === 'fuzzy') {
     html += `<div class="flag-name">~ "${f.rawName}"</div>`;
@@ -844,7 +844,7 @@ function flagHTML(f, idx) {
     html += `<div class="flag-actions"><button class="btn-flag accept" onclick="acceptFlag(${idx})">✓ ACCEPT</button>`;
     html += `<select class="flag-select" id="flag-assign-${idx}"><option value="">— Assign to different player —</option>`;
     players.forEach(p => { html += `<option value="${p.replace(/"/g, '&quot;')}">${p}</option>`; });
-    html += `</select><button class="btn-flag accept" onclick="assignFlag(${idx})">↗ REASSIGN</button>`;
+    html += `</select><button class="btn-flag accept" onclick="assignFlag(${idx}, this)">↗ REASSIGN</button>`;
     html += `<button class="btn-flag reject" onclick="rejectFlag(${idx})">× DISMISS</button></div>`;
   } else if(f.type === 'duplicate') {
     html += `<div class="flag-name">⚠ "${f.rawName}"</div>`;
@@ -874,9 +874,9 @@ function acceptFlag(idx) {
 
 function rejectFlag(idx) { flags.splice(idx, 1); renderFlags(); updateFlagBadge(); }
 
-function assignFlag(idx) {
+function assignFlag(idx, btn) {
   const f = flags[idx];
-  const select = document.getElementById('flag-assign-' + idx);
+  const select = btn ? btn.closest('.flag-actions').querySelector('.flag-select') : document.getElementById('flag-assign-' + idx);
   if(!select || !select.value) { toast('Select a player first', 'warning'); return; }
   const player = select.value;
   if(scores[player] !== undefined && scores[player] !== null) { toast(`${player} already has a score`, 'warning'); return; }
