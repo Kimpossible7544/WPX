@@ -394,9 +394,9 @@ function findBestMatch(rawName){
   if (norm === normalize('ÍJÁG') || norm === 'ijag') return {player:'IJAG',score:100};
   if (norm === normalize('ÍJĶĹ') || norm === normalize('IJĶL') || norm === 'ijkl') return {player:'IJKL',score:100};
 
-  // Exact aliases always beat fuzzy matching
+  // Exact aliases always beat fuzzy matching (only if target is on roster)
   for(const [alias, rosterName] of Object.entries(aliases)){
-    if(normalize(alias) === norm) return {player: rosterName, score:100, fromAlias:true};
+    if(normalize(alias) === norm && players.includes(rosterName)) return {player: rosterName, score:100, fromAlias:true};
   }
 
   // Fuzzy match
