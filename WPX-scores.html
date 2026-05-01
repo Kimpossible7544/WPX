@@ -346,6 +346,7 @@
 
 <div class="toast-container" id="toastContainer"></div>
 
+<script>
 // ── STATE ─────────────────────────────────────────────────────
 let players = [];
 let scores  = {};
@@ -488,6 +489,476 @@ function similarity(a,b){
   return Math.round((1 - levenshtein(a,b)/Math.max(a.length,b.length))*100);
 }
 
+// ── CLOUD SYNC ────────────────────────────────────────────────
+const WORKER_URL = 'https://yellow-flower-ca92.kaheins32.workers.dev';
+const WPX_SECRET = 'Abigail2011!';
+const isMobile = () => window.innerWidth < 768;
+
+async function cloudSave(key, value) {
+  try {
+    await fetch(`${WORKER_URL}?key=${key}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-WPX-Secret': WPX_SECRET},
+      body: JSON.stringify({value})
+    });
+  } catch(e) {
+    console.warn('Cloud save failed, using localStorage', e);
+    localStorage.setItem(key, JSON.stringify(value));
+  }
+}
+
+async function cloudLoad(key, fallback) {
+  try {
+    const resp = await fetch(`${WORKER_URL}?key=${key}`, {
+      headers: {'X-WPX-Secret': WPX_SECRET}
+    });
+    const data = await resp.json();
+    if (data.value !== null && data.value !== undefined) return JSON.parse(data.value);
+  } catch(e) {
+    console.warn('Cloud load failed, using localStorage', e);
+  }
+  const local = localStorage.getItem(key);
+  return local ? JSON.parse(local) : fallback;
+}
+
+async function savePlayers() {
+  localStorage.setItem('wpx_score_players', JSON.stringify(players));
+  await cloudSave('wpx_score_players', players);
+}
+
+async function saveScores() {
+  localStorage.setItem('wpx_scores', JSON.stringify(scores));
+  await cloudSave('wpx_scores', scores);
+}
+
+async function saveAliases() {
+  localStorage.setItem('wpx_aliases', JSON.stringify(aliases));
+  await cloudSave('wpx_aliases', aliases);
+}
+
+// ── INIT ──────────────────────────────────────────────────────
+async function init() {
+  players = await cloudLoad('wpx_score_players', []);
+  scores = await cloudLoad('wpx_scores', {});
+
+  const defaultAliases = {
+    '乃ㄥAQΜE': 'Blaque', '乃LαQµε': 'Blaque', '乃LaOμe': 'Blaque',
+    '乃LaQμe': 'Blaque', '乃LαQμε': 'Blaque',
+    'ÍJÁG': 'IJAG', 'IJAG': 'IJAG',
+    'ÍJĶĹ': 'IJKL', 'IJĶL': 'IJKL', 'IJKL': 'IJKL',
+    'Jäckal $ 0 F2P': 'Jackal $ 0 F2P.2', 'Jäċkal $ 0 F2P': 'Jackal $ 0 F2P.2',
+    'Crazy On Break': 'Crazy AF', 'metalhead1617': 'MetalHead',
+    'Ender174': 'Ender', 'STÖRM°BÄTËY': 'Storm-Batey',
+    'Lisa°': 'Lisa', 'Ozzi-': 'Ozzi', 'Kimpossible754': 'Kimpossible7544',
+    'HŪRSTBRØ': 'HURSTBRO', 'GKPHyInd': 'GKPHyland',
+    'HulaGrafix': 'HulaGraphix', 'ÉFG H': 'EFGH', 'TLCHIN': 'TLChin'
+  };
+
+  aliases = await cloudLoad('wpx_aliases', {});
+  aliases = {...defaultAliases, ...aliases};
+
+  const savedWeek = localStorage.getItem('wpx_week_label') || '';
+  document.getElementById('weekLabel').value = savedWeek;
+  document.getElementById('weekDisplay').textContent = savedWeek;
+  if(document.getElementById('weekDisplayD')) document.getElementById('weekDisplayD').textContent = savedWeek;
+
+  setSelectedDay(selectedDay);
+  renderPlayerList(); renderResultsTable(); renderFlags(); setupDragDrop();
+
+  document.getElementById('weekLabel').addEventListener('input', function() {
+    localStorage.setItem('wpx_week_label', this.value);
+    document.getElementById('weekDisplay').textContent = this.value;
+    if(document.getElementById('weekDisplayD')) document.getElementById('weekDisplayD').textContent = this.value;
+  });
+
+  document.getElementById('playerInput').addEventListener('keydown', e => { if(e.key === 'Enter') addPlayer(); });
+  if(document.getElementById('playerInputD')) document.getElementById('playerInputD').addEventListener('keydown', e => { if(e.key === 'Enter') addPlayerD(); });
+
+  if(window.navigator.standalone === false || (window.matchMedia && window.matchMedia('(display-mode: browser)').matches)) {
+    const dismissed = localStorage.getItem('wpx_install_dismissed');
+    if(!dismissed && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
+      document.getElementById('installBanner').classList.add('show');
+    }
+  }
+}
+
+// ── TABS ──────────────────────────────────────────────────────
+function switchTab(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  el.classList.add('active');
+}
+
+// ── PLAYERS ───────────────────────────────────────────────────
+function addPlayer() { const inp = document.getElementById('playerInput'); doAddPlayer(inp.value.trim()); inp.value = ''; inp.focus(); }
+function addPlayerD() { const inp = document.getElementById('playerInputD'); doAddPlayer(inp.value.trim()); inp.value = ''; inp.focus(); }
+
+function doAddPlayer(name) {
+  if(!name) return;
+  if(players.map(p => p.toLowerCase()).includes(name.toLowerCase())) { toast('Player already on roster', 'warning'); return; }
+  players.push(name); players.sort((a, b) => a.localeCompare(b));
+  savePlayers(); renderPlayerList(); renderResultsTable();
+  toast(`${name} added`);
+}
+
+function removePlayer(name) {
+  if(!confirm(`Remove ${name}?`)) return;
+  players = players.filter(p => p !== name); delete scores[name];
+  savePlayers(); saveScores(); renderPlayerList(); renderResultsTable();
+  toast(`${name} removed`);
+}
+
+function startRename(name) { renderPlayerList(name); }
+
+function commitRename(oldName) {
+  const inp = document.getElementById('rename-' + oldName.replace(/\s/g, '_').replace(/[^a-zA-Z0-9_]/g, ''));
+  if(!inp) return;
+  const newName = inp.value.trim();
+  if(!newName || newName === oldName) { renderPlayerList(); return; }
+  const idx = players.indexOf(oldName); if(idx >= 0) players[idx] = newName;
+  if(scores[oldName] !== undefined) { scores[newName] = scores[oldName]; delete scores[oldName]; }
+  players.sort((a, b) => a.localeCompare(b));
+  savePlayers(); saveScores(); renderPlayerList(); renderResultsTable();
+  toast(`Renamed to ${newName}`);
+}
+
+function renderPlayerList(editingName = null) {
+  const count = players.length;
+  const countHtml = count
+    ? `<span style="color:var(--dim)">${count} player${count !== 1 ? 's' : ''} · auto-saved</span>`
+    : '<span style="color:var(--dim)">No players yet</span>';
+  document.getElementById('rosterCount').innerHTML = countHtml;
+  if(document.getElementById('rosterCountD')) document.getElementById('rosterCountD').innerHTML = countHtml;
+
+  const html = players.length ? players.map(p => {
+    const safeId = 'rename-' + p.replace(/\s/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+    if(p === editingName)
+      return `<div class="player-chip"><input class="chip-edit-input" id="${safeId}" value="${p.replace(/"/g, '&quot;')}" onblur="commitRename('${p.replace(/'/g, "\\'")}')" onkeydown="if(event.key==='Enter')commitRename('${p.replace(/'/g, "\\'")}');if(event.key==='Escape')renderPlayerList();" autofocus/><div class="chip-actions"><button class="chip-btn" onclick="commitRename('${p.replace(/'/g, "\\'")}')">✓</button></div></div>`;
+    return `<div class="player-chip"><span class="chip-name">${p}</span><div class="chip-actions"><button class="chip-btn" onclick="startRename('${p.replace(/'/g, "\\'")}')">✎</button><button class="chip-btn del" onclick="removePlayer('${p.replace(/'/g, "\\'")}')">×</button></div></div>`;
+  }).join('') : '<div style="color:var(--dim);font-family:var(--mono);font-size:0.72rem;padding:8px 0;">No players yet</div>';
+
+  document.getElementById('playerList').innerHTML = html;
+  if(document.getElementById('playerListD')) document.getElementById('playerListD').innerHTML = html;
+  if(editingName) {
+    const inp = document.getElementById('rename-' + editingName.replace(/\s/g, '_').replace(/[^a-zA-Z0-9_]/g, ''));
+    if(inp) { inp.focus(); inp.select(); }
+  }
+}
+
+// ── ROSTER BACKUP / BULK ──────────────────────────────────────
+function backupRoster() {
+  if(!players.length) { toast('No players to back up', 'warning'); return; }
+  const blob = new Blob([players.join('\n')], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob); const a = document.createElement('a');
+  a.href = url; a.download = 'wpx-scores-roster.txt'; a.click();
+  URL.revokeObjectURL(url); toast(`Roster saved (${players.length} players)`, 'success');
+}
+
+function showBulkModal() {
+  document.getElementById('restoreInput').value = players.join('\n');
+  document.getElementById('restoreModal').classList.add('show');
+  setTimeout(() => document.getElementById('restoreInput').focus(), 100);
+}
+
+function closeModal() { document.getElementById('restoreModal').classList.remove('show'); }
+
+async function doRestore() {
+  const input = document.getElementById('restoreInput');
+  if(!input) { toast('Roster import box not found', 'warning'); return; }
+  const names = input.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  if(!names.length) { toast('No names found', 'warning'); return; }
+  players = [...new Set(names)]; players.sort((a, b) => a.localeCompare(b));
+  const newScores = {};
+  players.forEach(p => { if(scores[p] !== undefined) newScores[p] = scores[p]; });
+  scores = newScores;
+  await savePlayers(); await saveScores();
+  renderPlayerList(); renderResultsTable(); closeModal();
+  toast(`Roster set — ${players.length} players`, 'success');
+}
+
+// ── DAY PICKER ────────────────────────────────────────────────
+function setSelectedDay(day) {
+  selectedDay = day;
+  localStorage.setItem('wpx_selected_day', day);
+  document.querySelectorAll('.day-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.day === day));
+  document.querySelectorAll('.selected-day-label').forEach(el => { el.textContent = day; });
+}
+
+// ── FILE QUEUE ────────────────────────────────────────────────
+function handleFiles(e) {
+  addToQueue(Array.from(e.target.files)); e.target.value = '';
+  if(isMobile()) switchTab('upload', document.querySelectorAll('.nav-tab')[1]);
+}
+
+function addToQueue(files) {
+  files.forEach(file => {
+    const r = new FileReader();
+    r.onload = ev => { queue.push({ file, dataUrl: ev.target.result, status: 'pending' }); renderQueue(); };
+    r.readAsDataURL(file);
+  });
+}
+
+function removeFromQueue(idx) { queue.splice(idx, 1); renderQueue(); }
+
+function renderQueue() {
+  const show = queue.length > 0;
+  document.getElementById('queueSection').style.display = show ? 'block' : 'none';
+  document.getElementById('queueCount').textContent = queue.length;
+  document.getElementById('queueGrid').innerHTML = queueHTML();
+  if(document.getElementById('queueSectionD')) {
+    document.getElementById('queueSectionD').style.display = show ? 'block' : 'none';
+    document.getElementById('queueCountD').textContent = queue.length;
+    document.getElementById('queueGridD').innerHTML = queueHTML();
+  }
+  const done = queue.filter(q => q.status === 'done' || q.status === 'error').length;
+  const pct = queue.length ? (done / queue.length * 100) : 0;
+  ['progressFill', 'progressFillD'].forEach(id => { const el = document.getElementById(id); if(el) el.style.width = pct + '%'; });
+  ['progressLabel', 'progressLabelD'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = `${done} / ${queue.length}`; });
+}
+
+function queueHTML() {
+  return queue.map((item, i) =>
+    `<div class="queue-item"><img src="${item.dataUrl}" alt="screenshot"/>${item.status === 'pending' ? `<button class="q-remove" onclick="removeFromQueue(${i})">×</button>` : ''}<div class="q-status ${item.status}">${item.status.toUpperCase()}</div></div>`
+  ).join('');
+}
+
+function setupDragDrop() {
+  ['uploadZone', 'uploadZoneD'].forEach(id => {
+    const el = document.getElementById(id); if(!el) return;
+    el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('dragover'); });
+    el.addEventListener('dragleave', () => el.classList.remove('dragover'));
+    el.addEventListener('drop', e => { e.preventDefault(); el.classList.remove('dragover'); addToQueue(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'))); });
+  });
+}
+
+// ── PROCESS ───────────────────────────────────────────────────
+async function processAll() {
+  if(!queue.length) { toast('No screenshots in queue', 'warning'); return; }
+  if(!players.length) { toast('Add players to roster first', 'warning'); return; }
+  if(processing) return;
+  processing = true;
+  document.getElementById('headerStatus').textContent = 'PROCESSING...';
+  toast(`Processing ${queue.filter(q => q.status === 'pending').length} screenshot(s)...`);
+
+  for(let i = 0; i < queue.length; i++) {
+    if(queue[i].status !== 'pending') continue;
+    queue[i].status = 'processing'; renderQueue();
+    try {
+      const extracted = await extractScoresFromImage(queue[i].dataUrl);
+      const parsed = extracted.map(entry => ({
+        name: entry.name,
+        score: typeof entry.score === 'string' ? parseInt(entry.score.replace(/[^0-9]/g, ''), 10) : Number(entry.score)
+      })).filter(entry => !isNaN(entry.score));
+      matchAndStore(parsed);
+      queue[i].status = 'done';
+      await saveScores();
+      renderResultsTable(); renderFlags();
+    } catch(err) {
+      queue[i].status = 'error';
+      toast(`Error on screenshot ${i + 1}`, 'warning');
+      console.error(err);
+    }
+    renderQueue();
+  }
+
+  players.forEach(p => {
+    if(scores[p] === undefined || scores[p] === null) {
+      if(!flags.find(f => f.type === 'missing' && f.rawName === p))
+        flags.push({ type: 'missing', rawName: p });
+    }
+  });
+
+  processing = false;
+  document.getElementById('headerStatus').textContent = 'AI ONLINE';
+  renderResultsTable(); renderFlags(); updateFlagBadge();
+  toast('Processing complete!', 'success');
+  if(isMobile()) setTimeout(() => switchTab('scores', document.querySelectorAll('.nav-tab')[2]), 400);
+}
+
+async function extractScoresFromImage(dataUrl) {
+  const base64 = dataUrl.split(',')[1];
+  const mediaType = dataUrl.split(';')[0].split(':')[1];
+  const resp = await fetch(`${WORKER_URL}?action=ai`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-WPX-Secret': WPX_SECRET },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6', max_tokens: 1000,
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+        { type: 'text', text: 'This is a screenshot from a zombie game scoreboard. Extract all visible player names and their scores.\n\nReturn ONLY a JSON array, no markdown:\n[{"name":"PlayerName","score":12345},...]\n\nRules:\n- Include every player visible\n- Score = total points as a single number\n- Use exact player name as shown\n- Omit players where score cannot be determined' }
+      ]}]
+    })
+  });
+  if(!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(`API error ${resp.status}: ${err?.error?.message || resp.statusText}`); }
+  const data = await resp.json();
+  const text = data.content.map(c => c.text || '').join('');
+  return JSON.parse(text.replace(/```json|```/g, '').trim());
+}
+
+// ── RESULTS TABLE ─────────────────────────────────────────────
+function renderResultsTable() {
+  const sorted = [...players].sort((a, b) => {
+    const sa = scores[a], sb = scores[b];
+    if(sa !== undefined && sb !== undefined) return sb - sa;
+    if(sa !== undefined) return -1;
+    if(sb !== undefined) return 1;
+    return a.localeCompare(b);
+  });
+
+  const html = !players.length
+    ? '<tr><td colspan="4"><div class="empty-state">NO DATA YET</div></td></tr>'
+    : sorted.map((p, i) => {
+        const s = scores[p];
+        const hasScore = s !== undefined && s !== null;
+        const scoreText = hasScore ? Number(s).toLocaleString() : '—';
+        const status = hasScore ? '<span class="flag-badge ok">✓</span>' : '<span class="flag-badge">PENDING</span>';
+        return `<tr><td style="color:var(--dim)">${String(i + 1).padStart(2, '0')}</td><td>${p}</td><td class="${hasScore ? 'score-cell' : 'score-empty'}">${scoreText}</td><td>${status}</td></tr>`;
+      }).join('');
+
+  document.getElementById('resultsBody').innerHTML = html;
+  if(document.getElementById('resultsBodyD')) document.getElementById('resultsBodyD').innerHTML = html;
+
+  const weekLabel = document.getElementById('weekLabel');
+  if(weekLabel) {
+    document.getElementById('weekDisplay').textContent = weekLabel.value;
+    if(document.getElementById('weekDisplayD')) document.getElementById('weekDisplayD').textContent = weekLabel.value;
+  }
+}
+
+// ── FLAG HTML ─────────────────────────────────────────────────
+function flagHTML(f, idx) {
+  let html = '<div class="flag-item">';
+  if(f.type === 'unknown') {
+    html += `<div class="flag-name">🚨 "${f.rawName}"</div>`;
+    html += `<div class="flag-score">${f.score !== undefined ? Number(f.score).toLocaleString() + ' pts' : ''}</div>`;
+    html += `<div class="flag-meta">Not matched to any roster player</div>`;
+    html += `<div class="flag-actions"><select class="flag-select" id="flag-assign-${idx}"><option value="">— Assign to player —</option>`;
+    players.forEach(p => { html += `<option value="${p.replace(/"/g, '&quot;')}">${p}</option>`; });
+    html += `</select><button class="btn-flag accept" onclick="assignFlag(${idx})">✓ ASSIGN</button>`;
+    html += `<button class="btn-flag reject" onclick="rejectFlag(${idx})">× DISMISS</button></div>`;
+  } else if(f.type === 'fuzzy') {
+    html += `<div class="flag-name">~ "${f.rawName}"</div>`;
+    html += `<div class="flag-score">${f.score !== undefined ? Number(f.score).toLocaleString() + ' pts' : ''}</div>`;
+    html += `<div class="flag-meta">Possible match: <strong style="color:var(--text)">${f.suggestedPlayer}</strong> (${f.matchScore}% confidence)</div>`;
+    html += `<div class="flag-actions"><button class="btn-flag accept" onclick="acceptFlag(${idx})">✓ ACCEPT</button>`;
+    html += `<select class="flag-select" id="flag-assign-${idx}"><option value="">— Assign to different player —</option>`;
+    players.forEach(p => { html += `<option value="${p.replace(/"/g, '&quot;')}">${p}</option>`; });
+    html += `</select><button class="btn-flag accept" onclick="assignFlag(${idx})">↗ REASSIGN</button>`;
+    html += `<button class="btn-flag reject" onclick="rejectFlag(${idx})">× DISMISS</button></div>`;
+  } else if(f.type === 'duplicate') {
+    html += `<div class="flag-name">⚠ "${f.rawName}"</div>`;
+    html += `<div class="flag-score">${f.score !== undefined ? Number(f.score).toLocaleString() + ' pts' : ''}</div>`;
+    html += `<div class="flag-meta">Duplicate entry for <strong style="color:var(--text)">${f.suggestedPlayer || f.rawName}</strong></div>`;
+    html += `<div class="flag-actions"><button class="btn-flag reject" onclick="rejectFlag(${idx})">× DISMISS</button></div>`;
+  } else if(f.type === 'missing') {
+    html += `<div class="flag-name">○ ${f.rawName}</div>`;
+    html += `<div class="flag-meta">Not found in any uploaded screenshot</div>`;
+    html += `<div class="flag-actions"><button class="btn-flag reject" onclick="rejectFlag(${idx})">× DISMISS</button></div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+// ── FLAG ACTIONS ──────────────────────────────────────────────
+function acceptFlag(idx) {
+  const f = flags[idx]; if(!f || !f.suggestedPlayer) return;
+  if(scores[f.suggestedPlayer] !== undefined && scores[f.suggestedPlayer] !== null) {
+    toast(`${f.suggestedPlayer} already has a score`, 'warning'); return;
+  }
+  scores[f.suggestedPlayer] = f.score;
+  flags.splice(idx, 1);
+  saveScores(); renderResultsTable(); renderFlags(); updateFlagBadge();
+  toast(`✓ ${f.suggestedPlayer}: ${Number(f.score).toLocaleString()} pts`, 'success');
+}
+
+function rejectFlag(idx) { flags.splice(idx, 1); renderFlags(); updateFlagBadge(); }
+
+function assignFlag(idx) {
+  const f = flags[idx];
+  const select = document.getElementById('flag-assign-' + idx);
+  if(!select || !select.value) { toast('Select a player first', 'warning'); return; }
+  const player = select.value;
+  if(scores[player] !== undefined && scores[player] !== null) { toast(`${player} already has a score`, 'warning'); return; }
+  scores[player] = f.score;
+  aliases[f.rawName] = player; saveAliases();
+  flags.splice(idx, 1);
+  saveScores(); renderResultsTable(); renderFlags(); updateFlagBadge();
+  toast(`✓ ${player}: ${Number(f.score).toLocaleString()} pts`, 'success');
+}
+
+function updateFlagBadge() {
+  const badge = document.getElementById('flagBadge');
+  if(badge) { badge.textContent = flags.length; badge.classList.toggle('show', flags.length > 0); }
+  const sectionD = document.getElementById('flagsSectionD');
+  if(sectionD) sectionD.style.display = flags.length > 0 ? 'block' : 'none';
+}
+
+// ── COPY & EXPORT ─────────────────────────────────────────────
+function copyToClipboard() {
+  const sorted = [...players].sort((a, b) => {
+    const sa = scores[a], sb = scores[b];
+    if(sa !== undefined && sb !== undefined) return sb - sa;
+    if(sa !== undefined) return -1;
+    if(sb !== undefined) return 1;
+    return a.localeCompare(b);
+  });
+  if(!sorted.length) { toast('No data to copy', 'warning'); return; }
+  const weekLabel = document.getElementById('weekLabel').value;
+  let text = weekLabel ? `${weekLabel}\n\n` : '';
+  text += sorted.map((p, i) => {
+    const s = scores[p];
+    return `${i + 1}. ${p}: ${s !== undefined && s !== null ? Number(s).toLocaleString() : '—'}`;
+  }).join('\n');
+  navigator.clipboard.writeText(text).then(() => toast(`Copied ${sorted.length} scores!`, 'success')).catch(() => {
+    const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    toast(`Copied ${sorted.length} scores!`, 'success');
+  });
+}
+
+function exportCSV() {
+  const ranked = [...players].sort((a, b) => {
+    const sa = scores[a], sb = scores[b];
+    if(sa !== undefined && sb !== undefined) return sb - sa;
+    if(sa !== undefined) return -1;
+    if(sb !== undefined) return 1;
+    return 0;
+  });
+  if(!ranked.length) { toast('No data to export', 'warning'); return; }
+  let csv = 'Rank,Player,Score\n';
+  ranked.forEach((p, i) => {
+    const s = scores[p];
+    csv += `${i + 1},"${p}",${s !== undefined && s !== null ? s : ''}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob); const a = document.createElement('a');
+  const wl = document.getElementById('weekLabel').value;
+  a.href = url; a.download = `wpx-scores${wl ? '-' + wl.replace(/\s+/g, '-') : ''}.csv`; a.click();
+  URL.revokeObjectURL(url); toast('CSV exported', 'success');
+}
+
+function resetScores() {
+  if(!confirm('Clear all scores? Roster stays.')) return;
+  scores = {}; flags = []; queue = [];
+  saveScores(); renderResultsTable(); renderFlags(); renderQueue(); updateFlagBadge();
+  toast('Scores cleared — ready for new week', 'success');
+}
+
+// ── TOAST ─────────────────────────────────────────────────────
+function toast(msg, type = '') {
+  const el = document.createElement('div'); el.className = `toast ${type}`; el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; setTimeout(() => el.remove(), 300); }, 3000);
+}
+
+// ── INSTALL ───────────────────────────────────────────────────
+function dismissInstall() {
+  localStorage.setItem('wpx_install_dismissed', '1');
+  document.getElementById('installBanner').classList.remove('show');
+}
+
+init();
 </script>
 </body>
 </html>
