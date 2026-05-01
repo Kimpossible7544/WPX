@@ -354,35 +354,57 @@ let aliases = {};
 let selectedDay = localStorage.getItem('wpx_selected_day') || 'Mon';
 let queue=[], flags=[], processing=false;
 
+// ── UNICODE / LEET MAP ────────────────────────────────────────
+const UNICODE_MAP={
+  '0':'o','1':'i','3':'e','4':'a','5':'s','6':'g','7':'t','8':'b','9':'g','@':'a','$':'s','!':'i',
+  'ａ':'a','ｂ':'b','ｃ':'c','ｄ':'d','ｅ':'e','ｆ':'f','ｇ':'g','ｈ':'h','ｉ':'i','ｊ':'j','ｋ':'k','ｌ':'l','ｍ':'m','ｎ':'n','ｏ':'o','ｐ':'p','ｑ':'q','ｒ':'r','ｓ':'s','ｔ':'t','ｕ':'u','ｖ':'v','ｗ':'w','ｘ':'x','ｙ':'y','ｚ':'z',
+  'Ａ':'a','Ｂ':'b','Ｃ':'c','Ｄ':'d','Ｅ':'e','Ｆ':'f','Ｇ':'g','Ｈ':'h','Ｉ':'i','Ｊ':'j','Ｋ':'k','Ｌ':'l','Ｍ':'m','Ｎ':'n','Ｏ':'o','Ｐ':'p','Ｑ':'q','Ｒ':'r','Ｓ':'s','Ｔ':'t','Ｕ':'u','Ｖ':'v','Ｗ':'w','Ｘ':'x','Ｙ':'y','Ｚ':'z',
+  'α':'a','β':'b','γ':'g','δ':'d','ε':'e','η':'n','θ':'o','ι':'i','κ':'k','λ':'l','μ':'m','µ':'m','ν':'v','ο':'o','π':'p','ρ':'r','σ':'s','τ':'t','υ':'u','φ':'f','χ':'x','ω':'w',
+  'Α':'a','Β':'b','Γ':'g','Δ':'d','Ε':'e','Η':'n','Θ':'o','Ι':'i','Κ':'k','Λ':'l','Μ':'m','Ν':'n','Ο':'o','Π':'p','Ρ':'r','Σ':'s','Τ':'t','Υ':'u','Φ':'f','Χ':'x','Ω':'w',
+  'а':'a','е':'e','о':'o','р':'r','с':'s','х':'x','у':'y','к':'k','А':'a','Е':'e','О':'o','Р':'r','С':'s','Х':'x','У':'y','К':'k','В':'b','М':'m','Т':'t','Н':'n','И':'i',
+  'ㄥ':'l','乃':'b','卄':'h','ㄖ':'r',
+  'á':'a','à':'a','â':'a','ä':'a','ã':'a','å':'a','ā':'a','Á':'a','À':'a','Â':'a','Ä':'a','Ã':'a','Å':'a','Ā':'a',
+  'é':'e','è':'e','ê':'e','ë':'e','ē':'e','É':'e','È':'e','Ê':'e','Ë':'e','Ē':'e',
+  'í':'i','ì':'i','î':'i','ï':'i','ī':'i','Í':'i','Ì':'i','Î':'i','Ï':'i','Ī':'i',
+  'ó':'o','ò':'o','ô':'o','ö':'o','õ':'o','ø':'o','Ó':'o','Ò':'o','Ô':'o','Ö':'o','Õ':'o','Ø':'o',
+  'ú':'u','ù':'u','û':'u','ü':'u','ū':'u','Ú':'u','Ù':'u','Û':'u','Ü':'u','Ū':'u',
+  'ý':'y','ÿ':'y','Ý':'y','ñ':'n','Ñ':'n','ç':'c','Ç':'c','ċ':'c','Ċ':'c','ķ':'k','Ķ':'k','ĺ':'l','Ĺ':'l'
+};
+
+function transliterate(str){let out='';for(const ch of str)out+=UNICODE_MAP[ch]!==undefined?UNICODE_MAP[ch]:ch;return out;}
+
 // ── NORMALIZATION ─────────────────────────────────────────────
-function normalize(name){
-  return name
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^a-z0-9]/g,'');
-}
+function normalize(name){return transliterate(name).toLowerCase().replace(/[^a-z0-9]/g,'');}
 
 // ── MATCHING ──────────────────────────────────────────────────
 function findBestMatch(rawName){
-  const normRaw = normalize(rawName);
+  const norm = normalize(rawName);
 
-  // 🚫 HARD BLOCKS
-  const blocked = ['blaque','乃ㄥaqμe'];
-  if (blocked.some(b => normRaw.includes(normalize(b)))) return null;
+  // Hard-stop exact problem names before fuzzy matching
+  const blaqueKeys = [
+    'blaque','blagme','blaqme',
+    normalize('乃ㄥAQΜE'),
+    normalize('乃LαQµε'),
+    normalize('乃LaOμe'),
+    normalize('乃LaQμe'),
+    normalize('乃LαQμε')
+  ];
+  if (blaqueKeys.includes(norm)) return {player:'Blaque',score:100};
 
-  if (normRaw.includes(normalize('a사시미스시'))) return null;
+  if (norm === normalize('ÍJÁG') || norm === 'ijag') return {player:'IJAG',score:100};
+  if (norm === normalize('ÍJĶĹ') || norm === normalize('IJĶL') || norm === 'ijkl') return {player:'IJKL',score:100};
 
-  // Alias check (safe ones only)
+  // Exact aliases always beat fuzzy matching
   for(const [alias, rosterName] of Object.entries(aliases)){
-    if(normalize(alias) === normRaw){
-      return {player: rosterName, score:100, fromAlias:true};
-    }
+    if(normalize(alias) === norm) return {player: rosterName, score:100, fromAlias:true};
   }
 
   // Fuzzy match
   let best=null, bestScore=0;
   for(const p of players){
-    const s = similarity(normRaw, normalize(p));
+    // Never let Blaque-looking names get stolen by Brommex/Brommexx
+    if(normalize(p).startsWith('bromm') && (norm.includes('blaq') || norm.includes('blag') || norm.includes('blaqme'))) continue;
+    const s = similarity(norm, normalize(p));
     if(s > bestScore){
       bestScore = s;
       best = p;
@@ -904,11 +926,9 @@ function copyToClipboard() {
     return a.localeCompare(b);
   });
   if(!sorted.length) { toast('No data to copy', 'warning'); return; }
-  const weekLabel = document.getElementById('weekLabel').value;
-  let text = weekLabel ? `${weekLabel}\n\n` : '';
-  text += sorted.map((p, i) => {
+  const text = sorted.map(p => {
     const s = scores[p];
-    return `${i + 1}. ${p}: ${s !== undefined && s !== null ? Number(s).toLocaleString() : '—'}`;
+    return `${p}, ${s !== undefined && s !== null ? s : '—'}`;
   }).join('\n');
   navigator.clipboard.writeText(text).then(() => toast(`Copied ${sorted.length} scores!`, 'success')).catch(() => {
     const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
