@@ -634,7 +634,7 @@ function renderResultsTable(){
 function copyToClipboard(){
   const sorted=[...players].sort((a,b)=>a.localeCompare(b));
   if(!sorted.length){toast('No data to copy','warning');return;}
-  const text=sorted.map(p=>`${p}, ${results[p]?results[p].status:'F'}`).join('\n');
+  const text=sorted.map(p=>`${p}\t${results[p]?results[p].status:'F'}`).join('\n');
   navigator.clipboard.writeText(text).then(()=>toast(`Copied ${sorted.length} results!`,'success')).catch(()=>{
     const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
     document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
