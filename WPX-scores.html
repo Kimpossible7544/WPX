@@ -351,6 +351,7 @@
 let players = [];
 let scores  = {};
 let aliases = {};
+let reverseAliases = {};
 let selectedDay = localStorage.getItem('wpx_selected_day') || 'Mon';
 let queue=[], flags=[], processing=false;
 
@@ -568,15 +569,32 @@ async function init() {
     'ÍJÁG': 'IJAG', 'IJAG': 'IJAG',
     'ÍJĶĹ': 'IJKL', 'IJĶL': 'IJKL', 'IJKL': 'IJKL',
     'Jäckal $ 0 F2P': 'Jackal $ 0 F2P.2', 'Jäċkal $ 0 F2P': 'Jackal $ 0 F2P.2',
-    'Crazy On Break': 'Crazy AF', 'metalhead1617': 'MetalHead',
-    'Ender174': 'Ender', 'STÖRM°BÄTËY': 'Storm-Batey',
-    'Lisa°': 'Lisa', 'Ozzi-': 'Ozzi', 'Kimpossible754': 'Kimpossible7544',
-    'HŪRSTBRØ': 'HURSTBRO', 'GKPHyInd': 'GKPHyland',
+    'Crazy On Break': 'Crazy AF',
+    'Ender': 'Ender174', 'MetalHead': 'metalhead1617', 'Metalhead': 'metalhead1617',
+    'Lunacat': 'Lunacat17', 'Ozzi': 'Ozzi-',
+    'GKPHyland': 'GKPHylnd', 'GKPHyInd': 'GKPHylnd',
+    'Slap-mlt-can': 'slap-mtl-can',
+    'STÖRM°BÄTËY': 'Storm-Batey',
+    'Lisa°': 'Lisa', 'Kimpossible754': 'Kimpossible7544',
+    'HŪRSTBRØ': 'HURSTBRO',
     'HulaGrafix': 'HulaGraphix', 'ÉFG H': 'EFGH', 'TLCHIN': 'TLChin'
   };
 
   aliases = await cloudLoad('wpx_aliases', {});
   aliases = {...defaultAliases, ...aliases};
+
+  // Build reverse lookup: roster name → Excel name (for clipboard export)
+  reverseAliases = {};
+  for(const [alias, rosterName] of Object.entries(aliases)){
+    if(alias !== rosterName && !reverseAliases[rosterName]) reverseAliases[rosterName] = alias;
+  }
+  // Override with explicit mappings (old WPX roster name → current Excel name)
+  Object.assign(reverseAliases, {
+    'Ender': 'Ender174', 'MetalHead': 'metalhead1617', 'Metalhead': 'metalhead1617',
+    'Lunacat': 'Lunacat17', 'Ozzi': 'Ozzi-',
+    'GKPHyland': 'GKPHylnd', 'HulaGraphix': 'HulaGrafix',
+    'Slap-mlt-can': 'slap-mtl-can', 'Crazy AF': 'Crazy On Break'
+  });
 
   const savedWeek = localStorage.getItem('wpx_week_label') || '';
   document.getElementById('weekLabel').value = savedWeek;
@@ -927,7 +945,8 @@ function copyToClipboard() {
   if(!sorted.length) { toast('No data to copy', 'warning'); return; }
   const text = sorted.map(p => {
     const s = scores[p];
-    return `${p}\t${s !== undefined && s !== null ? s : '—'}`;
+    const name = reverseAliases[p] || p;
+    return `${name}\t${s !== undefined && s !== null ? s : '—'}`;
   }).join('\n');
   navigator.clipboard.writeText(text).then(() => toast(`Copied ${sorted.length} scores!`, 'success')).catch(() => {
     const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';

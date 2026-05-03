@@ -288,6 +288,7 @@
 // ── STATE ─────────────────────────────────────────────────────
 let players = [];
 let aliases = {};
+let reverseAliases = {};
 let results = {};
 let queue=[], processing=false;
 const THRESHOLD=750000000;
@@ -346,14 +347,14 @@ async function init(){
     'Jäckal $ 0 F2P': 'Jackal $ 0 F2P.2',
     'Jäċkal $ 0 F2P': 'Jackal $ 0 F2P.2',
     'Crazy On Break': 'Crazy AF',
-    'metalhead1617': 'MetalHead',
-    'Ender174': 'Ender',
+    'Ender': 'Ender174', 'MetalHead': 'metalhead1617', 'Metalhead': 'metalhead1617',
+    'Lunacat': 'Lunacat17', 'Ozzi': 'Ozzi-',
+    'GKPHyland': 'GKPHylnd', 'GKPHyInd': 'GKPHylnd',
+    'Slap-mlt-can': 'slap-mtl-can',
     'STÖRM°BÄTËY': 'Storm-Batey',
     'Lisa°': 'Lisa',
-    'Ozzi-': 'Ozzi',
     'Kimpossible754': 'Kimpossible7544',
     'HŪRSTBRØ': 'HURSTBRO',
-    'GKPHyInd': 'GKPHyland',
     'HulaGrafix': 'HulaGraphix',
     'ÉFG H': 'EFGH',
     'TLCHIN': 'TLChin'
@@ -361,6 +362,18 @@ async function init(){
 
   aliases = await cloudLoad('wpx_aliases', {}); // shared with score tracker
   aliases = {...defaultAliases, ...aliases};
+
+  // Build reverse lookup: roster name → Excel name (for clipboard export)
+  reverseAliases = {};
+  for(const [alias, rosterName] of Object.entries(aliases)){
+    if(alias !== rosterName && !reverseAliases[rosterName]) reverseAliases[rosterName] = alias;
+  }
+  Object.assign(reverseAliases, {
+    'Ender': 'Ender174', 'MetalHead': 'metalhead1617', 'Metalhead': 'metalhead1617',
+    'Lunacat': 'Lunacat17', 'Ozzi': 'Ozzi-',
+    'GKPHyland': 'GKPHylnd', 'HulaGraphix': 'HulaGrafix',
+    'Slap-mlt-can': 'slap-mtl-can', 'Crazy AF': 'Crazy On Break'
+  });
 
   renderPlayerList();renderResultsTable();setupDragDrop();
   document.getElementById('playerInputD').addEventListener('keydown',e=>{if(e.key==='Enter')addPlayerD();});
@@ -634,7 +647,7 @@ function renderResultsTable(){
 function copyToClipboard(){
   const sorted=[...players].sort((a,b)=>a.localeCompare(b));
   if(!sorted.length){toast('No data to copy','warning');return;}
-  const text=sorted.map(p=>`${p}\t${results[p]?results[p].status:'F'}`).join('\n');
+  const text=sorted.map(p=>{const name=reverseAliases[p]||p;return `${name}\t${results[p]?results[p].status:'F'}`}).join('\n');
   navigator.clipboard.writeText(text).then(()=>toast(`Copied ${sorted.length} results!`,'success')).catch(()=>{
     const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
     document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
