@@ -938,10 +938,12 @@ function copyToClipboard() {
     return a.localeCompare(b);
   });
   if(!sorted.length) { toast('No data to copy', 'warning'); return; }
+  const dayMap = {Mon:'Monday',Tue:'Tuesday',Wed:'Wednesday',Thu:'Thursday',Fri:'Friday'};
+  const fullDay = dayMap[selectedDay] || selectedDay;
   const text = sorted.map(p => {
     const s = scores[p];
     const name = reverseAliases[p] || p;
-    return `${name}\t${s !== undefined && s !== null ? s : '—'}`;
+    return `${name}\t${s !== undefined && s !== null ? s : '—'}\t${fullDay}`;
   }).join('\n');
   navigator.clipboard.writeText(text).then(() => toast(`Copied ${sorted.length} scores!`, 'success')).catch(() => {
     const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
