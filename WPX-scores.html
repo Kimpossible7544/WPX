@@ -583,13 +583,12 @@ async function init() {
   aliases = await cloudLoad('wpx_aliases', {});
   aliases = {...defaultAliases, ...aliases};
 
-  // Explicit mappings: WPX roster name → Excel name (for clipboard export)
-  reverseAliases = {
-    'Ender': 'Ender174', 'MetalHead': 'metalhead1617', 'Metalhead': 'metalhead1617',
-    'Lunacat': 'Lunacat17', 'Ozzi': 'Ozzi-',
-    'GKPHyland': 'GKPHylnd', 'HulaGraphix': 'HulaGrafix',
-    'Slap-mlt-can': 'slap-mtl-can', 'Crazy AF': 'Crazy On Break'
-  };
+  // Build reverse lookup: alias → canonical name (for clipboard export)
+  // If a roster player has a Unicode/variant name, this maps it to the clean Excel name
+  reverseAliases = {};
+  for (const [alias, canonical] of Object.entries(aliases)) {
+    if (alias !== canonical) reverseAliases[alias] = canonical;
+  }
 
   const savedWeek = localStorage.getItem('wpx_week_label') || '';
   document.getElementById('weekLabel').value = savedWeek;
