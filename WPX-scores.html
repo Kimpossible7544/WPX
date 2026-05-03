@@ -583,13 +583,12 @@ async function init() {
   aliases = await cloudLoad('wpx_aliases', {});
   aliases = {...defaultAliases, ...aliases};
 
-  // Explicit mappings: WPX roster name → Excel name (for clipboard export)
-  reverseAliases = {
-    'Ender': 'Ender174', 'MetalHead': 'metalhead1617', 'Metalhead': 'metalhead1617',
-    'Lunacat': 'Lunacat17', 'Ozzi': 'Ozzi-',
-    'GKPHyland': 'GKPHylnd', 'HulaGraphix': 'HulaGrafix',
-    'Slap-mlt-can': 'slap-mtl-can', 'Crazy AF': 'Crazy On Break'
-  };
+  // Build reverse lookup: alias → canonical name (for clipboard export)
+  // If a roster player has a Unicode/variant name, this maps it to the clean Excel name
+  reverseAliases = {};
+  for (const [alias, canonical] of Object.entries(aliases)) {
+    if (alias !== canonical) reverseAliases[alias] = canonical;
+  }
 
   const savedWeek = localStorage.getItem('wpx_week_label') || '';
   document.getElementById('weekLabel').value = savedWeek;
@@ -938,10 +937,12 @@ function copyToClipboard() {
     return a.localeCompare(b);
   });
   if(!sorted.length) { toast('No data to copy', 'warning'); return; }
+  const dayMap = {Mon:'Monday',Tue:'Tuesday',Wed:'Wednesday',Thu:'Thursday',Fri:'Friday'};
+  const fullDay = dayMap[selectedDay] || selectedDay;
   const text = sorted.map(p => {
     const s = scores[p];
     const name = reverseAliases[p] || p;
-    return `${name}\t${s !== undefined && s !== null ? s : '—'}`;
+    return `${name}\t${s !== undefined && s !== null ? s : '—'}\t${fullDay}`;
   }).join('\n');
   navigator.clipboard.writeText(text).then(() => toast(`Copied ${sorted.length} scores!`, 'success')).catch(() => {
     const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
