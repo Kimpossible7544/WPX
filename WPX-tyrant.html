@@ -363,17 +363,13 @@ async function init(){
   aliases = await cloudLoad('wpx_aliases', {}); // shared with score tracker
   aliases = {...defaultAliases, ...aliases};
 
-  // Build reverse lookup: roster name → Excel name (for clipboard export)
-  reverseAliases = {};
-  for(const [alias, rosterName] of Object.entries(aliases)){
-    if(alias !== rosterName && !reverseAliases[rosterName]) reverseAliases[rosterName] = alias;
-  }
-  Object.assign(reverseAliases, {
+  // Explicit mappings: WPX roster name → Excel name (for clipboard export)
+  reverseAliases = {
     'Ender': 'Ender174', 'MetalHead': 'metalhead1617', 'Metalhead': 'metalhead1617',
     'Lunacat': 'Lunacat17', 'Ozzi': 'Ozzi-',
     'GKPHyland': 'GKPHylnd', 'HulaGraphix': 'HulaGrafix',
     'Slap-mlt-can': 'slap-mtl-can', 'Crazy AF': 'Crazy On Break'
-  });
+  };
 
   renderPlayerList();renderResultsTable();setupDragDrop();
   document.getElementById('playerInputD').addEventListener('keydown',e=>{if(e.key==='Enter')addPlayerD();});
@@ -612,9 +608,9 @@ function findBestMatch(rawName){
   if (norm === normalize('ÍJÁG') || norm === 'ijag') return {player:'IJAG',score:100};
   if (norm === normalize('ÍJĶĹ') || norm === normalize('IJĶL') || norm === 'ijkl') return {player:'IJKL',score:100};
 
-  // Exact aliases always beat fuzzy matching
+  // Exact aliases always beat fuzzy matching (only if target is on roster)
   for(const [alias,rosterName] of Object.entries(aliases)){
-    if(normalize(alias)===norm)return{player:rosterName,score:100};
+    if(normalize(alias)===norm && players.includes(rosterName))return{player:rosterName,score:100};
   }
 
   let best=null,bestScore=0;
