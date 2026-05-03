@@ -583,18 +583,13 @@ async function init() {
   aliases = await cloudLoad('wpx_aliases', {});
   aliases = {...defaultAliases, ...aliases};
 
-  // Build reverse lookup: roster name → Excel name (for clipboard export)
-  reverseAliases = {};
-  for(const [alias, rosterName] of Object.entries(aliases)){
-    if(alias !== rosterName && !reverseAliases[rosterName]) reverseAliases[rosterName] = alias;
-  }
-  // Override with explicit mappings (old WPX roster name → current Excel name)
-  Object.assign(reverseAliases, {
+  // Explicit mappings: WPX roster name → Excel name (for clipboard export)
+  reverseAliases = {
     'Ender': 'Ender174', 'MetalHead': 'metalhead1617', 'Metalhead': 'metalhead1617',
     'Lunacat': 'Lunacat17', 'Ozzi': 'Ozzi-',
     'GKPHyland': 'GKPHylnd', 'HulaGraphix': 'HulaGrafix',
     'Slap-mlt-can': 'slap-mtl-can', 'Crazy AF': 'Crazy On Break'
-  });
+  };
 
   const savedWeek = localStorage.getItem('wpx_week_label') || '';
   document.getElementById('weekLabel').value = savedWeek;
