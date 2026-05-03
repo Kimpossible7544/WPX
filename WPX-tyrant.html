@@ -288,6 +288,7 @@
 // ── STATE ─────────────────────────────────────────────────────
 let players = [];
 let aliases = {};
+let reverseAliases = {};
 let results = {};
 let queue=[], processing=false;
 const THRESHOLD=750000000;
@@ -295,13 +296,12 @@ const isMobile=()=>window.innerWidth<768;
 
 // ── CLOUDFLARE SYNC ───────────────────────────────────────────
 const WORKER_URL = 'https://yellow-flower-ca92.kaheins32.workers.dev';
-const WPX_SECRET = 'Abigail2011!';
 
 async function cloudSave(key, value) {
   try {
     await fetch(`${WORKER_URL}?key=${key}`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-WPX-Secret': WPX_SECRET},
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({value})
     });
   } catch(e) {
@@ -313,7 +313,7 @@ async function cloudSave(key, value) {
 async function cloudLoad(key, fallback) {
   try {
     const resp = await fetch(`${WORKER_URL}?key=${key}`, {
-      headers: {'X-WPX-Secret': WPX_SECRET}
+      headers: {}
     });
     const data = await resp.json();
     if (data.value !== null && data.value !== undefined) return JSON.parse(data.value);
@@ -347,14 +347,14 @@ async function init(){
     'Jäckal $ 0 F2P': 'Jackal $ 0 F2P.2',
     'Jäċkal $ 0 F2P': 'Jackal $ 0 F2P.2',
     'Crazy On Break': 'Crazy AF',
-    'metalhead1617': 'MetalHead',
-    'Ender174': 'Ender',
+    'Ender': 'Ender174', 'MetalHead': 'metalhead1617', 'Metalhead': 'metalhead1617',
+    'Lunacat': 'Lunacat17', 'Ozzi': 'Ozzi-',
+    'GKPHyland': 'GKPHylnd', 'GKPHyInd': 'GKPHylnd',
+    'Slap-mlt-can': 'slap-mtl-can',
     'STÖRM°BÄTËY': 'Storm-Batey',
     'Lisa°': 'Lisa',
-    'Ozzi-': 'Ozzi',
     'Kimpossible754': 'Kimpossible7544',
     'HŪRSTBRØ': 'HURSTBRO',
-    'GKPHyInd': 'GKPHyland',
     'HulaGrafix': 'HulaGraphix',
     'ÉFG H': 'EFGH',
     'TLCHIN': 'TLChin'
@@ -362,6 +362,14 @@ async function init(){
 
   aliases = await cloudLoad('wpx_aliases', {}); // shared with score tracker
   aliases = {...defaultAliases, ...aliases};
+
+  // Explicit mappings: WPX roster name → Excel name (for clipboard export)
+  reverseAliases = {
+    'Ender': 'Ender174', 'MetalHead': 'metalhead1617', 'Metalhead': 'metalhead1617',
+    'Lunacat': 'Lunacat17', 'Ozzi': 'Ozzi-',
+    'GKPHyland': 'GKPHylnd', 'HulaGraphix': 'HulaGrafix',
+    'Slap-mlt-can': 'slap-mtl-can', 'Crazy AF': 'Crazy On Break'
+  };
 
   renderPlayerList();renderResultsTable();setupDragDrop();
   document.getElementById('playerInputD').addEventListener('keydown',e=>{if(e.key==='Enter')addPlayerD();});
@@ -534,7 +542,7 @@ async function extractScoresFromImage(dataUrl){
   const mediaType=dataUrl.split(';')[0].split(':')[1];
   const resp=await fetch(`${WORKER_URL}?action=ai`,{
     method:'POST',
-    headers:{'Content-Type':'application/json','X-WPX-Secret':WPX_SECRET},
+    headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       model:'claude-sonnet-4-6',max_tokens:1000,
       messages:[{role:'user',content:[
@@ -600,9 +608,9 @@ function findBestMatch(rawName){
   if (norm === normalize('ÍJÁG') || norm === 'ijag') return {player:'IJAG',score:100};
   if (norm === normalize('ÍJĶĹ') || norm === normalize('IJĶL') || norm === 'ijkl') return {player:'IJKL',score:100};
 
-  // Exact aliases always beat fuzzy matching
+  // Exact aliases always beat fuzzy matching (only if target is on roster)
   for(const [alias,rosterName] of Object.entries(aliases)){
-    if(normalize(alias)===norm)return{player:rosterName,score:100};
+    if(normalize(alias)===norm && players.includes(rosterName))return{player:rosterName,score:100};
   }
 
   let best=null,bestScore=0;
@@ -635,7 +643,7 @@ function renderResultsTable(){
 function copyToClipboard(){
   const sorted=[...players].sort((a,b)=>a.localeCompare(b));
   if(!sorted.length){toast('No data to copy','warning');return;}
-  const text=sorted.map(p=>`${p}, ${results[p]?results[p].status:'F'}`).join('\n');
+  const text=sorted.map(p=>{const name=reverseAliases[p]||p;return `${name}\t${results[p]?results[p].status:'F'}`}).join('\n');
   navigator.clipboard.writeText(text).then(()=>toast(`Copied ${sorted.length} results!`,'success')).catch(()=>{
     const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
     document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
