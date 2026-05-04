@@ -494,7 +494,7 @@ Public Sub RefreshDashboard()
         hdr = SafeStr(wsPT.Cells(1, col).Value)
 
         If InStr(1, hdr, "Weekly Total (", vbTextCompare) > 0 Then
-            weekLabel = Replace(Replace(hdr, "Weekly Total (", ""), ")", "")
+            weekLabel = Replace(Replace(hdr, "Weekly Total (", "", , , vbTextCompare), ")", "")
 
             If InStr(weekLabel, " - ") > 0 Then
                 weekParts = Split(weekLabel, " - ")
@@ -505,6 +505,9 @@ Public Sub RefreshDashboard()
                 weekEndDate = CDate(weekEndStr & " " & Year(Now()))
                 On Error GoTo ErrHandler
 
+                If weekEndDate > Date + 7 Then
+                    weekEndDate = DateSerial(Year(Now()) - 1, Month(weekEndDate), Day(weekEndDate))
+                End If
                 If weekEndDate >= Date Then GoTo NextWeekCol
             End If
 
@@ -976,7 +979,11 @@ End Sub
 ' GetScore - Use in weekly sheet Col G: =GetScore(A2)
 '=======================================================
 Function GetScore(rawName As Variant) As Variant
-    If IsEmpty(rawName) Or rawName = "" Then
+    If IsError(rawName) Or IsEmpty(rawName) Then
+        GetScore = ""
+        Exit Function
+    End If
+    If rawName = "" Then
         GetScore = ""
         Exit Function
     End If
