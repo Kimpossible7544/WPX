@@ -713,10 +713,10 @@ Private Sub UpdateScoreChart(wsDash As Worksheet, weekNames As Variant, weekScor
     ReDim plotGoal(1 To cnt)
 
     For i = 1 To cnt
-        plotNames(i) = weekNames(startIx + i - 1)
-        plotScores(i) = weekScores(startIx + i - 1)
-        plotTrend(i) = trendLineVals(startIx + i - 1)
-        plotGoal(i) = goalLineVals(startIx + i - 1)
+        plotNames(i) = weekNames(startIx + cnt - i)
+        plotScores(i) = weekScores(startIx + cnt - i)
+        plotTrend(i) = trendLineVals(startIx + cnt - i)
+        plotGoal(i) = goalLineVals(startIx + cnt - i)
     Next i
 
     Set s = cht.SeriesCollection.NewSeries
@@ -787,9 +787,9 @@ Private Sub UpdateMissedGoalsChart(wsDash As Worksheet, weekNames As Variant, we
     ReDim plotMissedWeekly(1 To cnt)
 
     For i = 1 To cnt
-        plotNames(i) = weekNames(startIx + i - 1)
-        plotMissedDaily(i) = weekMissedDaily(startIx + i - 1)
-        plotMissedWeekly(i) = weekMissedWeekly(startIx + i - 1)
+        plotNames(i) = weekNames(startIx + cnt - i)
+        plotMissedDaily(i) = weekMissedDaily(startIx + cnt - i)
+        plotMissedWeekly(i) = weekMissedWeekly(startIx + cnt - i)
     Next i
 
     Set s = cht.SeriesCollection.NewSeries
@@ -831,7 +831,7 @@ Private Sub UpdateRankChartSimple(wsDash As Worksheet, weekNames As Variant, wee
     ReDim plotNames(1 To weekCount)
     ReDim plotRanks(1 To weekCount)
 
-    For i = 1 To weekCount
+    For i = weekCount To 1 Step -1
         If IsNumeric(weekRanks(i)) Then
             If CLng(weekRanks(i)) > 0 Then
                 cnt = cnt + 1
