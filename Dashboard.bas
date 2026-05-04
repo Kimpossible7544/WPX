@@ -924,6 +924,8 @@ Private Function CountPeachFailInRow(ws As Worksheet, playerRow As Long) As Long
     If ContainsPeachValue(ws.Cells(playerRow, "I").Value) Then cnt = cnt + 1
     If ContainsPeachValue(ws.Cells(playerRow, "J").Value) Then cnt = cnt + 1
     If ContainsPeachValue(ws.Cells(playerRow, "K").Value) Then cnt = cnt + 1
+    If ContainsPeachValue(ws.Cells(playerRow, "T").Value) Then cnt = cnt + 1
+    If ContainsPeachValue(ws.Cells(playerRow, "U").Value) Then cnt = cnt + 1
     CountPeachFailInRow = cnt
 End Function
 
