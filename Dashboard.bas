@@ -436,6 +436,7 @@ Public Sub RefreshDashboard()
     Dim dnpCount As Long
 
     Dim i As Long
+    Dim rw As Long
     Dim foundSheet As Boolean
     Dim weekSheetName As String
     Dim foundCell As Range
@@ -584,37 +585,37 @@ NextWeekCol:
                 foundSheet = True
 
                 Dim rowMatch As Boolean
-                For col = 2 To 106
+                For rw = 2 To 106
                     rowMatch = False
 
                     If playerID <> "" Then
-                        If Trim(SafeStr(ws.Cells(col, "V").Value)) = playerID Then
+                        If Trim(SafeStr(ws.Cells(rw, "V").Value)) = playerID Then
                             rowMatch = True
                         End If
                     Else
-                        If NormalizeDashboardName(SafeStr(ws.Cells(col, "A").Value)) = NormalizeDashboardName(player) Then
+                        If NormalizeDashboardName(SafeStr(ws.Cells(rw, "A").Value)) = NormalizeDashboardName(player) Then
                             rowMatch = True
                         End If
                     End If
 
                     If rowMatch Then
-                        weekMissedDaily(i) = CountMissedDailyGoals(ws, col)
+                        weekMissedDaily(i) = CountMissedDailyGoals(ws, rw)
 
-                        If WeekIsComplete(ws, col) Then
-                            If Not IsError(ws.Cells(col, "L").Value) Then
-                                If IsNumeric(ws.Cells(col, "L").Value) Then
-                                    If CDbl(ws.Cells(col, "L").Value) < 20000000 Then
+                        If WeekIsComplete(ws, rw) Then
+                            If Not IsError(ws.Cells(rw, "L").Value) Then
+                                If IsNumeric(ws.Cells(rw, "L").Value) Then
+                                    If CDbl(ws.Cells(rw, "L").Value) < 20000000 Then
                                         weekMissedWeekly(i) = 1
                                     End If
                                 End If
                             End If
                         End If
 
-                        dnpCount = dnpCount + CountPeachFailInRow(ws, col)
+                        dnpCount = dnpCount + CountPeachFailInRow(ws, rw)
                         Exit For
                     End If
 
-                Next col
+                Next rw
 
                 wl = GetWeekWinLossFromResultRow(ws)
                 weekWins(i) = wl(0)
