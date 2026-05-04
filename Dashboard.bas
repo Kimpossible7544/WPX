@@ -68,7 +68,7 @@ Public Sub UpdateWinLoss()
 
     Next ws
 
-    ThisWorkbook.Worksheets("Player Tracking").Range("F2").Value = Trim(result)
+    ' W/L record is computed by RefreshDashboard directly from weekly sheets
 
 End Sub
 
