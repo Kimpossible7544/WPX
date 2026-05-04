@@ -915,7 +915,7 @@ Private Function ContainsPeachValue(v As Variant) As Boolean
         ContainsPeachValue = False
         Exit Function
     End If
-    ContainsPeachValue = (LCase(txt) = "f") Or (AscW(txt) = 9746)
+    ContainsPeachValue = (LCase(txt) = "f") Or (LCase(txt) = "x") Or (AscW(txt) = 9746)
 End Function
 
 Private Function CountPeachFailInRow(ws As Worksheet, playerRow As Long) As Long
