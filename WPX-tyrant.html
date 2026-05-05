@@ -296,13 +296,12 @@ const isMobile=()=>window.innerWidth<768;
 
 // ── CLOUDFLARE SYNC ───────────────────────────────────────────
 const WORKER_URL = 'https://yellow-flower-ca92.kaheins32.workers.dev';
-const WPX_SECRET = 'Abigail2011!';
 
 async function cloudSave(key, value) {
   try {
     await fetch(`${WORKER_URL}?key=${key}`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-WPX-Secret': WPX_SECRET},
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({value})
     });
   } catch(e) {
@@ -314,7 +313,7 @@ async function cloudSave(key, value) {
 async function cloudLoad(key, fallback) {
   try {
     const resp = await fetch(`${WORKER_URL}?key=${key}`, {
-      headers: {'X-WPX-Secret': WPX_SECRET}
+      headers: {}
     });
     const data = await resp.json();
     if (data.value !== null && data.value !== undefined) return JSON.parse(data.value);
@@ -542,7 +541,7 @@ async function extractScoresFromImage(dataUrl){
   const mediaType=dataUrl.split(';')[0].split(':')[1];
   const resp=await fetch(`${WORKER_URL}?action=ai`,{
     method:'POST',
-    headers:{'Content-Type':'application/json','X-WPX-Secret':WPX_SECRET},
+    headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       model:'claude-sonnet-4-6',max_tokens:1000,
       messages:[{role:'user',content:[
