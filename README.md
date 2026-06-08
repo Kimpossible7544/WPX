@@ -2,7 +2,7 @@
 
 A full-stack web application for tracking and analyzing player performance data for a competitive mobile gaming alliance. Built entirely from scratch using vanilla JavaScript, HTML, and CSS — no frameworks, no build tools.
 
-🔗 **[Live Site](https://kimpossible7544.github.io/WPX/)**
+> **Note:** The automated screenshot processing feature is currently inactive due to API costs. The data pipeline, dashboard, and scoring logic are fully functional and documented below. Score data is currently ingested via CSV workflow.
 
 ---
 
@@ -52,9 +52,10 @@ The Excel workbook serves as the backend database. A VBA macro system handles sc
 - **Name normalization** — players use special characters, Unicode variants, and alternate display names. The matching system strips, normalizes, and maps names across Cyrillic, Greek, and Latin character sets
 - **Data integrity** — duplicate ID detection, ambiguous match flagging, and graceful fallback handling
 - **Resting week exclusions** — week-level flags propagate through all derived metrics (averages, miss counts, rankings) without affecting raw score totals
+- **Cost-conscious architecture** — the system is designed to minimize external API dependencies; core functionality runs entirely client-side with no hosting costs
 
 ---
 
 ## Related
 
-The score tracker frontend is backed by a sophisticated Excel/VBA workbook system — see the [Player-Dashboard](https://github.com/Kimpossible7544/Player-Dashboard) repo for the analytics layer.
+The score tracker frontend is backed by a sophisticated Excel/VBA workbook system — see the [Player-Dashboard](https://github.com/Kimpossible7544/Player-Dashboard) repo for the full analytics layer.
