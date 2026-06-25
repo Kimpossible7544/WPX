@@ -55,6 +55,8 @@
   .card-arrow{position:absolute;bottom:24px;right:24px;font-family:var(--mono);font-size:1.2rem;}
   .card.scores .card-arrow{color:var(--gore);}
   .card.tyrant .card-arrow{color:var(--gold);}
+  .home-link{display:inline-block;font-family:var(--mono);font-size:0.6rem;color:var(--dim);letter-spacing:3px;text-transform:uppercase;text-decoration:none;padding:8px 16px;border:1px solid var(--border);transition:all 0.2s;margin-bottom:12px;}
+  .home-link:hover{color:var(--text);border-color:var(--dim);}
   .footer{padding:20px 24px;padding-bottom:calc(20px + var(--safe-bottom));text-align:center;font-family:var(--mono);font-size:0.58rem;color:var(--dim);letter-spacing:2px;}
   @media(min-width:600px){.cards{flex-direction:row;align-items:stretch;}.card{flex:1;}.logo-main{font-size:5rem;}}
   @media(min-width:768px){header{padding:40px 48px 0;}.cards{padding:0 48px;gap:24px;}.divider-line{margin:24px 48px;}.card{padding:40px 32px;}.card-title{font-size:2.2rem;}.footer{padding:28px 48px;padding-bottom:calc(28px + var(--safe-bottom));}}
@@ -64,6 +66,7 @@
 
 <header>
   <div class="logo-wrap">
+    <a href="https://kimpossible7544.github.io/Player-Dashboard/" class="home-link">← Home</a>
     <div class="logo-main">WPX</div>
     <div class="logo-sub">// Command Center</div>
   </div>
