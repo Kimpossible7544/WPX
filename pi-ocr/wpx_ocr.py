@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """
-WPX screenshot -> CSV OCR pipeline.
+WPX screenshot -> CSV OCR pipeline (EasyOCR).
 
 Flow:
   1. Pull new screenshots from Dropbox (dbx:"WPX Screenshots")
-  2. OCR each with Tesseract (after light image cleanup)
-  3. Parse "player name  score" lines into rows
-  4. Write one CSV per screenshot  ->  <name>.csv
+  2. Run EasyOCR on each -> text boxes with x/y positions
+  3. Reconstruct scoreboard rows spatially: rank (left col),
+     player name (middle col, minus the "[Wpx]Warrior Phoenix" tag),
+     score (right col)
+  4. Write one CSV per screenshot -> Rank,Player,Score
   5. Push CSVs back to Dropbox (dbx:"Score CSVs")
   6. Remember processed files so they aren't re-done
 
 Run:  source ~/ocr/venv/bin/activate && python3 ~/ocr/wpx_ocr.py
+
+EasyOCR is far more accurate than Tesseract on stylized game UI, but the score
+column can still be misread by a digit or two, and light "0" scores may not be
+detected at all (left blank). The raw detections are saved next to each CSV
+(<name>.txt) for spot-checking.
 """
 
 import csv
@@ -19,7 +26,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageOps
+import easyocr
+from PIL import Image
 
 # ── CONFIG ────────────────────────────────────────────────────────────
 REMOTE          = "dbx"
@@ -27,22 +35,41 @@ INBOX_REMOTE    = f'{REMOTE}:"WPX Screenshots"'
 OUTPUT_REMOTE   = f'{REMOTE}:"Score CSVs"'
 
 BASE      = Path.home() / "ocr"
-INBOX     = BASE / "inbox"        # downloaded screenshots
-CSV_OUT   = BASE / "csv"          # generated CSVs
+INBOX     = BASE / "inbox"          # downloaded screenshots
+CSV_OUT   = BASE / "csv"            # generated CSVs
 DONE_LOG  = BASE / "processed.txt"  # filenames already handled
 
 IMG_EXTS  = {".png", ".jpg", ".jpeg", ".webp"}
 
-# A score is the trailing number on a row (0, or grouped like 19,831,527).
-SCORE_RE   = re.compile(r"(\d[\d.,\s]*)\s*$")
-# Alliance tag / subtitle text to strip out of the player name.
-TAG_RE     = re.compile(r"\[?wpx\]?\s*warrior|phoenix", re.IGNORECASE)
-RANK_RE    = re.compile(r"^\d{1,3}[\).:]?\s+")
+# Column boundaries as a fraction of image width (works across resolutions).
+RANK_COL_MAX   = 0.25   # rank number sits left of this
+SCORE_COL_MIN  = 0.60   # score sits right of this
+# A name/score belongs to a rank if within this fraction of image height in y.
+ROW_BAND       = 0.055
+
+# Alliance tag / subtitle text to drop from the player name.
+TAG_RE = re.compile(r"\[?wpx\]?\s*warrior|phoenix", re.IGNORECASE)
+# UI chrome (tabs, day selector, buttons) that must never be read as a name.
+HEADER_RE = re.compile(
+    r"^(mon|tue|wed|thu|fri|sat|sun|ranking|this week'?s|daily rank|"
+    r"personal ranking|my alliance)$",
+    re.IGNORECASE,
+)
+
+# Load the OCR model once (English). gpu=False for the Pi.
+_reader = None
+
+
+def reader():
+    global _reader
+    if _reader is None:
+        print("Loading EasyOCR model (first run downloads it)...")
+        _reader = easyocr.Reader(["en"], gpu=False)
+    return _reader
 
 
 # ── HELPERS ───────────────────────────────────────────────────────────
 def run(cmd):
-    """Run a shell command, return stdout, raise on failure."""
     res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     if res.returncode != 0:
         print(f"  ! command failed: {cmd}\n    {res.stderr.strip()}", file=sys.stderr)
@@ -50,9 +77,7 @@ def run(cmd):
 
 
 def load_done():
-    if DONE_LOG.exists():
-        return set(DONE_LOG.read_text().splitlines())
-    return set()
+    return set(DONE_LOG.read_text().splitlines()) if DONE_LOG.exists() else set()
 
 
 def mark_done(name):
@@ -60,57 +85,76 @@ def mark_done(name):
         f.write(name + "\n")
 
 
-THRESHOLD = 140   # binarization cutoff; lower keeps more (darker) pixels
+def as_number(text):
+    """Return int if text is a number (allowing , . space grouping), else None."""
+    stripped = re.sub(r"[.,\s]", "", text)
+    return int(stripped) if stripped.isdigit() else None
 
 
-def preprocess(img_path):
-    """Grayscale, 2x upscale, binarize -> best OCR on game scoreboards."""
-    img = Image.open(img_path).convert("L")
-    w, h = img.size
-    img = img.resize((w * 2, h * 2), Image.LANCZOS)   # upscale helps small text
-    img = img.point(lambda p: 255 if p > THRESHOLD else 0)   # black/white
-    out = img_path.with_suffix(".prep.png")
-    img.save(out)
-    return out
+def detect(img_path):
+    """Return (list of boxes, image width, image height)."""
+    w, h = Image.open(img_path).size
+    raw = reader().readtext(str(img_path), detail=1, paragraph=False)
+    items = []
+    for box, text, conf in raw:
+        cx = sum(p[0] for p in box) / 4
+        cy = sum(p[1] for p in box) / 4
+        items.append({
+            "cx": cx, "cy": cy, "text": text.strip(), "conf": conf,
+            "num": as_number(text), "is_tag": bool(TAG_RE.search(text)),
+            "is_header": bool(HEADER_RE.match(text.strip())),
+        })
+    return items, w, h
 
 
-def ocr(img_path):
-    """Return raw OCR text for an image."""
-    prepped = preprocess(img_path)
-    # --psm 6: treat the image as a single uniform block of text (one row per line)
-    txt = run(f'tesseract "{prepped}" stdout --psm 6')
-    prepped.unlink(missing_ok=True)
-    return txt
+def build_rows(items, w, h):
+    """Reconstruct [(rank, name, score)] from positioned OCR boxes."""
+    rank_max  = RANK_COL_MAX * w
+    score_min = SCORE_COL_MIN * w
+    band      = ROW_BAND * h
 
+    ranks = sorted(
+        (it for it in items if it["num"] is not None and it["cx"] < rank_max),
+        key=lambda it: it["cy"],
+    )
 
-def parse_scores(text):
-    """Turn raw OCR text into [(name, score:int)] rows."""
     rows = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        m = SCORE_RE.search(line)
-        if not m:
-            continue
-        raw_score = re.sub(r"[.,\s]", "", m.group(1))
-        if not raw_score.isdigit():
-            continue
-        score = int(raw_score)
-        name = line[: m.start()]
-        name = RANK_RE.sub("", name)          # drop leading rank "94 "
-        name = TAG_RE.sub("", name)           # drop "[Wpx]Warrior Phoenix"
-        name = name.strip(" .-:|\t")
-        if name:
-            rows.append((name, score))
+    for r in ranks:
+        y = r["cy"]
+
+        name_cands = [
+            it for it in items
+            if rank_max <= it["cx"] <= score_min
+            and not it["is_tag"] and not it["is_header"]
+            and it["text"] and it["num"] is None
+            and abs(it["cy"] - y) < band
+        ]
+        name = min(name_cands, key=lambda it: abs(it["cy"] - y))["text"] if name_cands else ""
+
+        score_cands = [
+            it for it in items
+            if it["cx"] >= score_min and it["num"] is not None
+            and abs(it["cy"] - y) < band
+        ]
+        score = min(score_cands, key=lambda it: abs(it["cy"] - y))["num"] if score_cands else None
+
+        if name or score is not None:
+            rows.append((r["num"], name, score))
     return rows
 
 
 def write_csv(rows, dest):
     with dest.open("w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["Player", "Score"])
-        w.writerows(rows)
+        wr = csv.writer(f)
+        wr.writerow(["Rank", "Player", "Score"])
+        for rank, name, score in rows:
+            wr.writerow([rank, name, "" if score is None else score])
+
+
+def dump_raw(items, dest):
+    lines = [f"{it['conf']:.2f}  x={int(it['cx']):4d} y={int(it['cy']):4d}  {it['text']}"
+             for it in sorted(items, key=lambda i: i["cy"])]
+    dest.write_text("\n".join(lines))
 
 
 # ── MAIN ──────────────────────────────────────────────────────────────
@@ -131,13 +175,11 @@ def main():
 
     for img in new:
         print(f"\nProcessing {img.name} ...")
-        text = ocr(img)
-        rows = parse_scores(text)
-        print(f"  found {len(rows)} score rows")
-        csv_path = CSV_OUT / (img.stem + ".csv")
-        write_csv(rows, csv_path)
-        # also drop the raw OCR text next to it for spot-checking
-        (CSV_OUT / (img.stem + ".txt")).write_text(text)
+        items, w, h = detect(img)
+        rows = build_rows(items, w, h)
+        print(f"  found {len(rows)} player rows")
+        write_csv(rows, CSV_OUT / (img.stem + ".csv"))
+        dump_raw(items, CSV_OUT / (img.stem + ".txt"))
         mark_done(img.name)
 
     print("\nPushing CSVs back to Dropbox...")

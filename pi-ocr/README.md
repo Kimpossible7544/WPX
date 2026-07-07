@@ -2,18 +2,19 @@
 
 A Raspberry Pi replacement for the (cost-disabled) AI screenshot processing in
 `WPX-scores.html`. Instead of sending scoreboard screenshots to an AI model, it
-runs [Tesseract](https://github.com/tesseract-ocr/tesseract) locally on the Pi.
+runs [EasyOCR](https://github.com/JaidedAI/EasyOCR) locally on the Pi and
+reconstructs each row spatially (rank / player / score) from the detected text
+boxes.
 
 ## Flow
 
 ```
 Dropbox: "WPX Screenshots"   (drop screenshots here)
         └── rclone copy → Pi
-                └── preprocess (grayscale, 2x upscale, binarize)
-                        └── Tesseract OCR  (--psm 6)
-                                └── parse "player  score" rows
-                                        └── one CSV per screenshot (Player,Score)
-                                                └── rclone copy → Dropbox: "Score CSVs"
+                └── EasyOCR → positioned text boxes
+                        └── reconstruct rows by column (rank | name | score)
+                                └── one CSV per screenshot (Rank,Player,Score)
+                                        └── rclone copy → Dropbox: "Score CSVs"
 ```
 
 Processed filenames are logged to `~/ocr/processed.txt` so re-runs skip them.
@@ -22,13 +23,18 @@ Processed filenames are logged to `~/ocr/processed.txt` so re-runs skip them.
 
 ```bash
 sudo apt update
-sudo apt install -y tesseract-ocr python3-venv rclone
+sudo apt install -y python3-venv rclone libgl1 libglib2.0-0   # libGL etc. for opencv
 mkdir -p ~/ocr && cd ~/ocr
 python3 -m venv venv && source venv/bin/activate
-pip install pillow
+pip install --upgrade pip
+pip install easyocr pillow
 # configure a Dropbox remote named "dbx"
 rclone config          # headless: choose "no" for auto config, authorize on a PC
 ```
+
+> **Note:** EasyOCR pulls in PyTorch, which is a large install and slow on a Pi.
+> Use a Pi 4/5 with plenty of free storage. The **first run** also downloads the
+> detection + recognition models (~65 MB) into `~/.EasyOCR`.
 
 Copy `wpx_ocr.py` into `~/ocr/` and run:
 
@@ -43,14 +49,26 @@ To automate every hour, add to `crontab -e`:
 0 * * * * /home/USER/ocr/venv/bin/python /home/USER/ocr/wpx_ocr.py >> /home/USER/ocr/run.log 2>&1
 ```
 
-## Accuracy caveats
+## Accuracy
 
-Tesseract is far less accurate than the AI model on stylized game UI. Expect to
-verify output. The raw OCR text for each screenshot is saved next to its CSV
-(`<name>.txt`) for spot-checking. Tuning knobs live at the top of `wpx_ocr.py`:
+Tested on a real "Personal Ranking" screenshot, EasyOCR read player names and the
+score column reliably (`DestinedOnè`, `BABY FORTUNER`, `Kimpossible7544`, etc.),
+where plain Tesseract failed. Caveats:
 
-- `THRESHOLD` — binarization cutoff (lower keeps more dark pixels).
-- Tesseract `--psm` mode in `ocr()` (`6` = uniform block; try `4` or `11`).
-- `SCORE_RE` / `TAG_RE` — row parsing regexes.
+- The score column can still be off by a digit on large numbers
+  (e.g. `19,831,527` was read as `19,8315527`) — spot-check big values.
+- Very light "0" scores are sometimes not detected and are left blank.
+- Names with heavy styling/spacing come through approximately (`L i s a°`,
+  `Ashmit Farm 1`) — the dashboard's fuzzy roster matching handles these.
 
-Cropping screenshots to just the name+score region before OCR improves results.
+The raw detections (text + x/y + confidence) for each screenshot are saved next
+to its CSV as `<name>.txt` for verification.
+
+## Tuning knobs (top of `wpx_ocr.py`)
+
+- `RANK_COL_MAX` / `SCORE_COL_MIN` — column boundaries as a fraction of image
+  width. Adjust if your screenshots put rank/score in different positions.
+- `ROW_BAND` — how close (fraction of image height) a name/score must be to a
+  rank to belong to the same row.
+- `TAG_RE` — alliance-tag text stripped from names.
+- `HEADER_RE` — UI chrome (tabs, day selector) ignored so it isn't read as a name.
